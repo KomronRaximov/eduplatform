@@ -13,7 +13,7 @@ const PAGE_SIZE = 30;
 const time = (iso: string) => new Date(iso).toLocaleTimeString('uz-UZ', { hour: '2-digit', minute: '2-digit', hour12: false });
 export const personName = (c: ChatContact) => `${c.firstName} ${c.lastName}`.trim();
 
-export function ChatThread({ conversationId, other, currentUserId, onBack }: { conversationId: string; other: ChatContact; currentUserId: string; onBack: () => void }) {
+export function ChatThread({ conversationId, other, currentUserId, unreadCount, onBack }: { conversationId: string; other: ChatContact; currentUserId: string; unreadCount: number; onBack: () => void }) {
   const qc = useQueryClient();
   const key = ['chat', 'messages', conversationId];
   const [draft, setDraft] = useState('');
@@ -21,6 +21,7 @@ export function ChatThread({ conversationId, other, currentUserId, onBack }: { c
   const [loadingOlder, setLoadingOlder] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
   const markedRef = useRef<string | null>(null);
+  const handledUnreadRef = useRef(0);
   const attemptsRef = useRef<Record<string, number>>({});
   const retryTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
   const [retryTick, setRetryTick] = useState(0);
@@ -44,32 +45,40 @@ export function ChatThread({ conversationId, other, currentUserId, onBack }: { c
   });
 
   const markRead = useMutation({
-    mutationFn: () => api<{ updated: number }>(`/chat/conversations/${conversationId}/read`, { method: 'POST' }),
+    mutationFn: (_trigger: string) => api<{ updated: number }>(`/chat/conversations/${conversationId}/read`, { method: 'POST' }),
     onSuccess: () => {
       qc.setQueryData<MessagesCache | undefined>(key, (old) => markMessagesRead(old, currentUserId, new Date().toISOString()));
       qc.invalidateQueries({ queryKey: ['chat', 'conversations'] });
       qc.invalidateQueries({ queryKey: ['chat', 'unread'] });
     },
-    // Silent retry (max 3 attempts per newest message id, 3s apart) so a transient failure doesn't leave the conversation unread.
-    onError: () => {
-      const id = markedRef.current;
-      if (!id) return;
-      attemptsRef.current[id] = (attemptsRef.current[id] ?? 0) + 1;
-      if (attemptsRef.current[id] >= 3) return;
-      retryTimer.current = setTimeout(() => { if (markedRef.current === id) { markedRef.current = null; setRetryTick((t) => t + 1); } }, 3000);
+    // Silent retry (max 3 attempts per trigger key, 3s apart) so a transient failure doesn't leave the conversation unread.
+    onError: (_e, trigger) => {
+      attemptsRef.current[trigger] = (attemptsRef.current[trigger] ?? 0) + 1;
+      if (attemptsRef.current[trigger] >= 3) return;
+      clearTimeout(retryTimer.current);
+      retryTimer.current = setTimeout(() => { markedRef.current = null; handledUnreadRef.current = 0; setRetryTick((t) => t + 1); }, 3000);
     },
   });
   const { mutate: markReadMutate } = markRead;
   useEffect(() => () => clearTimeout(retryTimer.current), []);
 
-  // Mark as read when the newest message is from the other party and unread (once per newest message id).
+  // Mark read when any other-party message in the loaded page is unread (once per newest pending id),
+  // or once when the list says there are unread messages we haven't loaded (again only if the count grows).
   useEffect(() => {
-    const last = items[items.length - 1];
-    if (!last || last.senderId === currentUserId || last.readAt !== null) return;
-    if (markedRef.current === last.id) return;
-    markedRef.current = last.id;
-    markReadMutate();
-  }, [items, currentUserId, markReadMutate, retryTick]);
+    const pending = items.filter((m) => m.senderId !== currentUserId && m.readAt === null);
+    if (pending.length > 0) {
+      const trigger = `m:${pending[pending.length - 1].id}`;
+      if (markedRef.current === trigger) return;
+      markedRef.current = trigger;
+      handledUnreadRef.current = unreadCount;
+      markReadMutate(trigger);
+    } else if (unreadCount === 0) {
+      handledUnreadRef.current = 0;
+    } else if (unreadCount > handledUnreadRef.current && data) {
+      handledUnreadRef.current = unreadCount;
+      markReadMutate(`u:${unreadCount}`);
+    }
+  }, [items, data, unreadCount, currentUserId, markReadMutate, retryTick]);
 
   // Scroll to the bottom only when the newest message changes (not when older ones are prepended).
   useLayoutEffect(() => {

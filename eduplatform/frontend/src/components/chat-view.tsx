@@ -104,7 +104,7 @@ export function ChatView({ currentUserId }: { currentUserId: string }) {
           )}
         </aside>
         <section className={`${activeId && other ? 'flex' : 'hidden md:flex'} min-h-0 min-w-0 flex-1 flex-col`}>
-          {activeId && other ? <ChatThread key={activeId} conversationId={activeId} other={other} currentUserId={currentUserId} onBack={() => setActiveId(null)} /> : <div className="grid flex-1 place-items-center p-6"><EmptyState icon="chat" title="Suhbatni tanlang" description="Chap tomondan suhbatni oching yoki yangisini boshlang." /></div>}
+          {activeId && other ? <ChatThread key={activeId} conversationId={activeId} other={other} currentUserId={currentUserId} unreadCount={active?.unreadCount ?? 0} onBack={() => setActiveId(null)} /> : <div className="grid flex-1 place-items-center p-6"><EmptyState icon="chat" title="Suhbatni tanlang" description="Chap tomondan suhbatni oching yoki yangisini boshlang." /></div>}
         </section>
       </div>
     </div>
