@@ -1,0 +1,28 @@
+'use client';
+
+import { useQuery } from '@tanstack/react-query';
+import { CartesianGrid, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
+import { Icon } from '../../../components/icons';
+import { EmptyState, ErrorBox, Loading, PageHeader, ProgressBar, StatCard } from '../../../components/ui';
+import { api } from '../../../lib/api';
+
+type TopicProgress = { id: string; averagePercentage: number; topic: { name: string }; classification: 'STRONG'|'NORMAL'|'WEAK' };
+type Progress = { summary: { totalAttempts: number; averagePercentage: number; bestPercentage: number }; history: { date: string; test: string; percentage: number }[]; topics: TopicProgress[]; strongTopics: TopicProgress[]; weakTopics: TopicProgress[]; recommendation: string };
+
+export default function ProgressPage() {
+  const { data, isLoading, error } = useQuery({ queryKey: ['progress'], queryFn: () => api<Progress>('/progress') });
+  if (isLoading) return <Loading />;
+  if (error) return <ErrorBox message={error.message} />;
+  const progress = data!;
+  const colors = { STRONG: 'border-emerald-200 bg-emerald-50 text-emerald-700', NORMAL: 'border-amber-200 bg-amber-50 text-amber-700', WEAK: 'border-rose-200 bg-rose-50 text-rose-700' };
+  const labels = { STRONG: 'Kuchli', NORMAL: 'O‘rtacha', WEAK: 'Zaif' };
+
+  return <>
+    <PageHeader eyebrow="Analitika" title="Progress va statistika" description="Natijalaringiz qanday o‘zgarayotganini kuzating va qaysi mavzularga ko‘proq e’tibor berishni biling." />
+    <div className="grid gap-4 sm:grid-cols-3"><StatCard label="Topshirilgan testlar" value={progress.summary.totalAttempts} icon="tests" tone="sky" /><StatCard label="O‘rtacha natija" value={`${progress.summary.averagePercentage}%`} icon="target" tone="amber" /><StatCard label="Eng yaxshi natija" value={`${progress.summary.bestPercentage}%`} icon="trophy" tone="emerald" /></div>
+    <section className="card mt-6"><div className="flex items-start justify-between"><div><p className="eyebrow mb-1">Dinamik ko‘rsatkich</p><h2 className="text-lg font-bold">Natijaning vaqt bo‘yicha o‘zgarishi</h2></div><span className="grid h-10 w-10 place-items-center rounded-xl bg-violet-100 text-violet-600"><Icon name="progress" /></span></div><div className="mt-7 h-72 sm:h-80">{progress.history.length ? <ResponsiveContainer width="100%" height="100%"><LineChart data={progress.history} margin={{ top: 5, right: 8, bottom: 0, left: -20 }}><defs><linearGradient id="line" x1="0" y1="0" x2="1" y2="0"><stop offset="0%" stopColor="#8b5cf6"/><stop offset="100%" stopColor="#4f46e5"/></linearGradient></defs><CartesianGrid strokeDasharray="4 4" vertical={false} stroke="#e9eaf0" /><XAxis dataKey="date" axisLine={false} tickLine={false} tick={{ fill: '#94a3b8', fontSize: 12 }} dy={10} /><YAxis domain={[0, 100]} axisLine={false} tickLine={false} tick={{ fill: '#94a3b8', fontSize: 12 }} /><Tooltip contentStyle={{ borderRadius: 14, border: '1px solid #e2e8f0', boxShadow: '0 12px 30px rgba(15,23,42,.1)' }} /><Line type="monotone" dataKey="percentage" stroke="url(#line)" strokeWidth={4} dot={{ r: 4, fill: '#fff', stroke: '#6d28d9', strokeWidth: 2 }} activeDot={{ r: 6 }} /></LineChart></ResponsiveContainer> : <EmptyState title="Grafik uchun ma’lumot yetarli emas" description="Testlarni yakunlaganingiz sari natija dinamikasi shu yerda paydo bo‘ladi." icon="progress" />}</div></section>
+    <section className="mt-6 grid gap-6 xl:grid-cols-[1.15fr_0.85fr]"><div className="card"><div className="flex items-center justify-between"><div><p className="eyebrow mb-1">Kesim</p><h2 className="text-lg font-bold">Mavzular bo‘yicha natija</h2></div><span className="text-sm font-semibold text-slate-400">{progress.topics.length} mavzu</span></div><div className="mt-6 space-y-6">{progress.topics.map(topic => <div key={topic.id}><div className="mb-2 flex items-center justify-between gap-4"><span className="text-sm font-semibold text-slate-800">{topic.topic.name}</span><div className="flex items-center gap-2"><span className={`rounded-full border px-2 py-0.5 text-[10px] font-bold uppercase ${colors[topic.classification]}`}>{labels[topic.classification]}</span><b className="w-12 text-right text-sm">{topic.averagePercentage}%</b></div></div><ProgressBar value={topic.averagePercentage} color={topic.classification === 'STRONG' ? 'from-emerald-400 to-emerald-600' : topic.classification === 'WEAK' ? 'from-rose-400 to-rose-600' : 'from-amber-400 to-amber-500'} /></div>)}{!progress.topics.length && <EmptyState title="Mavzular hali baholanmagan" description="Mavzu bo‘yicha test ishlang va tahlilni ko‘ring." icon="topics" />}</div></div>
+      <div className="card overflow-hidden bg-gradient-to-br from-violet-600 to-indigo-700 text-white"><span className="grid h-11 w-11 place-items-center rounded-2xl bg-white/15"><Icon name="sparkles" /></span><p className="mt-6 text-xs font-bold uppercase tracking-[0.18em] text-violet-200">Shaxsiy tavsiya</p><h2 className="mt-2 text-xl font-bold">Keyingi qadamingiz</h2><p className="mt-3 text-sm leading-7 text-indigo-100">{progress.recommendation}</p><div className="mt-7 border-t border-white/10 pt-6"><h3 className="text-sm font-bold">E’tibor talab qiladigan mavzular</h3><div className="mt-3 flex flex-wrap gap-2">{progress.weakTopics.map(topic => <span className="rounded-full bg-white/10 px-3 py-1.5 text-xs font-semibold" key={topic.id}>{topic.topic.name} · {topic.averagePercentage}%</span>)}{!progress.weakTopics.length && <span className="flex items-center gap-2 text-sm text-emerald-200"><Icon name="check" className="h-4 w-4" />Zaif mavzular aniqlanmadi</span>}</div></div></div>
+    </section>
+  </>;
+}

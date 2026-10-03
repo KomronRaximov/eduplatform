@@ -1,0 +1,136 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id                String              @id @default(uuid())
+  firstName         String
+  lastName          String
+  email             String              @unique
+  passwordHash      String
+  role              String              @default("STUDENT")
+  currentDifficulty String              @default("EASY")
+  attempts          TestAttempt[]
+  topicProgress     UserTopicProgress[]
+  createdAt         DateTime            @default(now())
+  updatedAt         DateTime            @updatedAt
+}
+
+model Topic {
+  id          String              @id @default(uuid())
+  name        String              @unique
+  description String?
+  isActive    Boolean             @default(true)
+  tests       Test[]
+  progress    UserTopicProgress[]
+  createdAt   DateTime            @default(now())
+  updatedAt   DateTime            @updatedAt
+}
+
+model Test {
+  id              String        @id @default(uuid())
+  title           String
+  description     String?
+  topicId         String
+  difficulty      String
+  durationMinutes Int?
+  isActive        Boolean       @default(true)
+  topic           Topic         @relation(fields: [topicId], references: [id], onDelete: Cascade)
+  questions       Question[]
+  attempts        TestAttempt[]
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+
+  @@index([topicId])
+  @@index([difficulty])
+}
+
+model Question {
+  id        String          @id @default(uuid())
+  testId    String
+  text      String
+  order     Int
+  points    Int             @default(1)
+  test      Test            @relation(fields: [testId], references: [id], onDelete: Cascade)
+  options   AnswerOption[]
+  answers   AttemptAnswer[]
+  createdAt DateTime        @default(now())
+  updatedAt DateTime        @updatedAt
+
+  @@unique([testId, order])
+  @@index([testId])
+}
+
+model AnswerOption {
+  id         String          @id @default(uuid())
+  questionId String
+  text       String
+  isCorrect  Boolean         @default(false)
+  order      Int
+  question   Question        @relation(fields: [questionId], references: [id], onDelete: Cascade)
+  selectedIn AttemptAnswer[]
+  createdAt  DateTime        @default(now())
+  updatedAt  DateTime        @updatedAt
+
+  @@index([questionId])
+}
+
+model TestAttempt {
+  id                    String          @id @default(uuid())
+  userId                String
+  testId                String
+  difficulty            String
+  totalQuestions        Int
+  correctAnswers        Int             @default(0)
+  wrongAnswers          Int             @default(0)
+  score                 Float           @default(0)
+  percentage            Float           @default(0)
+  recommendedDifficulty String
+  startedAt             DateTime        @default(now())
+  finishedAt            DateTime?
+  user                  User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  test                  Test            @relation(fields: [testId], references: [id], onDelete: Restrict)
+  answers               AttemptAnswer[]
+  createdAt             DateTime        @default(now())
+
+  @@index([userId])
+  @@index([testId])
+  @@index([createdAt])
+}
+
+model AttemptAnswer {
+  id               String        @id @default(uuid())
+  attemptId        String
+  questionId       String
+  selectedOptionId String?
+  isCorrect        Boolean       @default(false)
+  points           Float         @default(0)
+  attempt          TestAttempt   @relation(fields: [attemptId], references: [id], onDelete: Cascade)
+  question         Question      @relation(fields: [questionId], references: [id], onDelete: Restrict)
+  selectedOption   AnswerOption? @relation(fields: [selectedOptionId], references: [id], onDelete: SetNull)
+  createdAt        DateTime      @default(now())
+
+  @@unique([attemptId, questionId])
+  @@index([attemptId])
+}
+
+model UserTopicProgress {
+  id                String   @id @default(uuid())
+  userId            String
+  topicId           String
+  difficulty        String   @default("EASY")
+  averagePercentage Float    @default(0)
+  totalAttempts     Int      @default(0)
+  bestPercentage    Float    @default(0)
+  lastPercentage    Float    @default(0)
+  user              User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  topic             Topic    @relation(fields: [topicId], references: [id], onDelete: Cascade)
+  updatedAt         DateTime @updatedAt
+
+  @@unique([userId, topicId])
+}
