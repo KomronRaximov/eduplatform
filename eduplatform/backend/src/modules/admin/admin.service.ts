@@ -1,5 +1,6 @@
 import { BadRequestException, ConflictException, Injectable, NotFoundException } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
+import { UserRole } from '../../common/types/database.enums';
 import { PrismaService } from '../../prisma/prisma.service';
 import { VideoFilesService } from '../videos/video-files.service';
 import {
@@ -94,24 +95,35 @@ export class AdminService {
   async updateUser(id: string, dto: UpdateUserDto, actingUserId?: string) {
     const existing: any = await this.user(id);
     if (actingUserId === id && dto.role !== undefined && dto.role !== existing?.role) throw new BadRequestException("O‘z rolingizni o‘zgartirib bo‘lmaydi");
-    return this.prisma.user.update({
-      where: { id },
-      data: dto,
-      select: {
-        id: true,
-        firstName: true,
-        lastName: true,
-        email: true,
-        role: true,
-        currentDifficulty: true,
-      },
+    const demotesAdmin = existing?.role === UserRole.ADMIN && dto.role !== undefined && dto.role !== UserRole.ADMIN;
+    return this.prisma.$transaction(async (tx) => {
+      if (demotesAdmin) await this.assertNotLastAdmin(tx);
+      return tx.user.update({
+        where: { id },
+        data: dto,
+        select: {
+          id: true,
+          firstName: true,
+          lastName: true,
+          email: true,
+          role: true,
+          currentDifficulty: true,
+        },
+      });
     });
   }
 
   async deleteUser(id: string) {
-    await this.user(id);
-    await this.prisma.user.delete({ where: { id } });
+    const existing: any = await this.user(id);
+    await this.prisma.$transaction(async (tx) => {
+      if (existing?.role === UserRole.ADMIN) await this.assertNotLastAdmin(tx);
+      await tx.user.delete({ where: { id } });
+    });
     return { success: true };
+  }
+
+  private async assertNotLastAdmin(tx: Prisma.TransactionClient) {
+    if ((await tx.user.count({ where: { role: UserRole.ADMIN } })) <= 1) throw new BadRequestException('Tizimda kamida bitta administrator qolishi kerak');
   }
 
   topics() {
