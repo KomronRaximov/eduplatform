@@ -68,9 +68,10 @@ export function ChatThread({ conversationId, other, currentUserId, unreadCount, 
     const pending = items.filter((m) => m.senderId !== currentUserId && m.readAt === null);
     if (pending.length > 0) {
       const trigger = `m:${pending[pending.length - 1].id}`;
+      // Record the unread count this m: trigger covers BEFORE the guard, so a list refetch that lands mid-flight can't later fire a redundant u: POST.
+      handledUnreadRef.current = Math.max(handledUnreadRef.current, unreadCount);
       if (markedRef.current === trigger) return;
       markedRef.current = trigger;
-      handledUnreadRef.current = unreadCount;
       markReadMutate(trigger);
     } else if (unreadCount === 0) {
       handledUnreadRef.current = 0;
