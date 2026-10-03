@@ -114,3 +114,13 @@ describe('PracticeService concurrency and stale sessions', () => {
     await expect(service.submit('u1', 'a1', { answers: [] }, now)).rejects.toThrow(ConflictException);
   });
 });
+
+describe('PracticeService.submit writes answers once', () => {
+  it('inserts the attempt answers exactly once, one row per session question', async () => {
+    const attempt = { id: 'a1', userId: 'u1', isPractice: true, finishedAt: null, difficulty: 'EASY', practiceQuestions: [{ question: makeQuestion('q1') }, { question: makeQuestion('q2') }] };
+    const { service, tx } = setup({ attempt });
+    await service.submit('u1', 'a1', { answers: [] }, now);
+    expect(tx.attemptAnswer.createMany).toHaveBeenCalledTimes(1);
+    expect(tx.attemptAnswer.createMany.mock.calls[0][0].data).toHaveLength(2);
+  });
+});

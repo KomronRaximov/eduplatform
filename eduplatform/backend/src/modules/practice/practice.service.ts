@@ -51,7 +51,7 @@ export class PracticeService {
     if (attempt.finishedAt) throw new ConflictException('Bu sessiya allaqachon yakunlangan');
     const evaluation = evaluateAnswers(attempt.practiceQuestions.map(entry => entry.question), dto.answers);
     const reviews = await this.prisma.$transaction(async tx => {
-      const closed = await tx.testAttempt.updateMany({ where: { id: attemptId, finishedAt: null }, data: { correctAnswers: evaluation.correctCount, wrongAnswers: evaluation.rows.length - evaluation.correctCount, score: evaluation.score, percentage: evaluation.percentage, recommendedDifficulty: attempt.difficulty, finishedAt: now } });      if (!closed.count) throw new ConflictException('Bu sessiya allaqachon yakunlangan');      await tx.attemptAnswer.createMany({ data: evaluation.rows.map(row => ({ attemptId, ...row })) });
+      const closed = await tx.testAttempt.updateMany({ where: { id: attemptId, finishedAt: null }, data: { correctAnswers: evaluation.correctCount, wrongAnswers: evaluation.rows.length - evaluation.correctCount, score: evaluation.score, percentage: evaluation.percentage, recommendedDifficulty: attempt.difficulty, finishedAt: now } });
       if (!closed.count) throw new ConflictException('Bu sessiya allaqachon yakunlangan');
       await tx.attemptAnswer.createMany({ data: evaluation.rows.map(row => ({ attemptId, ...row })) });
       return this.stats.record(tx, userId, evaluation.rows.map(({ questionId, isCorrect }) => ({ questionId, isCorrect })), now);
