@@ -5,12 +5,13 @@ import { useQuery } from '@tanstack/react-query';
 import { Icon } from '../../../components/icons';
 import { DifficultyBadge, EmptyState, ErrorBox, Loading, ProgressBar, StatCard } from '../../../components/ui';
 import { api } from '../../../lib/api';
-import { Test } from '../../../types';
+import { PracticeOverview, Test } from '../../../types';
 
-type Dashboard = { user: { firstName: string; currentDifficulty: 'EASY'|'MEDIUM'|'HARD' }; summary: { totalTests: number; averagePercentage: number; bestPercentage: number }; recommendedTests: Test[]; recentAttempts: { id: string; percentage: number; test: Test; finishedAt: string }[]; topicProgress: { id: string; averagePercentage: number; topic: { name: string } }[] };
+type Dashboard = { user: { firstName: string; currentDifficulty: 'EASY'|'MEDIUM'|'HARD' }; summary: { totalTests: number; averagePercentage: number; bestPercentage: number }; recommendedTests: Test[]; recentAttempts: { id: string; percentage: number; test: Test | null; finishedAt: string }[]; topicProgress: { id: string; averagePercentage: number; topic: { name: string } }[] };
 
 export default function DashboardPage() {
   const { data, isLoading, error } = useQuery({ queryKey: ['dashboard'], queryFn: () => api<Dashboard>('/dashboard') });
+  const { data: practice } = useQuery({ queryKey: ['practice-overview'], queryFn: () => api<PracticeOverview>('/practice/overview'), retry: false });
   if (isLoading) return <Loading />;
   if (error) return <ErrorBox message={error.message} />;
   const dashboard = data!;
@@ -25,6 +26,8 @@ export default function DashboardPage() {
       </div>
     </section>
 
+    {practice && <section className="mb-7 card flex flex-col items-start justify-between gap-4 sm:flex-row sm:items-center"><div className="flex items-center gap-4"><span className="grid h-12 w-12 shrink-0 place-items-center rounded-2xl bg-violet-100 text-violet-600"><Icon name="target" /></span><div><p className="eyebrow mb-1">Shaxsiy mashq</p><h2 className="text-lg font-bold text-slate-950">{practice.dueCount > 0 ? `Bugungi takrorlash: ${practice.dueCount} ta savol` : 'Bugun takrorlash yo‘q, yangi savollarni yeching'}</h2></div></div><Link href="/practice" className="btn-primary">Mashqni boshlash<Icon name="arrow" className="h-4 w-4" /></Link></section>}
+
     <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
       <StatCard label="Joriy daraja" value={<DifficultyBadge value={dashboard.user.currentDifficulty} />} icon="target" detail="Natijalarga qarab yangilanadi" />
       <StatCard label="Topshirilgan testlar" value={dashboard.summary.totalTests} icon="tests" tone="sky" />
@@ -37,7 +40,7 @@ export default function DashboardPage() {
     </section>
 
     <section className="mt-9 grid gap-6 xl:grid-cols-[0.9fr_1.1fr]">
-      <div className="card"><div className="flex items-center justify-between"><div><p className="eyebrow mb-1">Faollik</p><h2 className="text-lg font-bold">Oxirgi natijalar</h2></div><span className="grid h-10 w-10 place-items-center rounded-xl bg-sky-100 text-sky-600"><Icon name="history" /></span></div><div className="mt-5 space-y-1">{dashboard.recentAttempts.map(attempt => <Link href={`/attempts/${attempt.id}/result`} className="flex items-center gap-3 rounded-xl px-2 py-3 transition hover:bg-slate-50" key={attempt.id}><span className={`grid h-10 w-10 shrink-0 place-items-center rounded-xl text-sm font-bold ${attempt.percentage >= 80 ? 'bg-emerald-100 text-emerald-700' : attempt.percentage >= 50 ? 'bg-amber-100 text-amber-700' : 'bg-rose-100 text-rose-700'}`}>{Math.round(attempt.percentage)}</span><div className="min-w-0 flex-1"><p className="truncate text-sm font-semibold text-slate-800">{attempt.test.title}</p><p className="mt-0.5 text-xs text-slate-400">{new Date(attempt.finishedAt).toLocaleDateString('uz-UZ')}</p></div><Icon name="arrow" className="h-4 w-4 text-slate-300" /></Link>)}{!dashboard.recentAttempts.length && <EmptyState title="Natijalar hali yo‘q" description="Birinchi testingizdan keyin natijalar shu yerda ko‘rinadi." icon="history" />}</div></div>
+      <div className="card"><div className="flex items-center justify-between"><div><p className="eyebrow mb-1">Faollik</p><h2 className="text-lg font-bold">Oxirgi natijalar</h2></div><span className="grid h-10 w-10 place-items-center rounded-xl bg-sky-100 text-sky-600"><Icon name="history" /></span></div><div className="mt-5 space-y-1">{dashboard.recentAttempts.map(attempt => <Link href={`/attempts/${attempt.id}/result`} className="flex items-center gap-3 rounded-xl px-2 py-3 transition hover:bg-slate-50" key={attempt.id}><span className={`grid h-10 w-10 shrink-0 place-items-center rounded-xl text-sm font-bold ${attempt.percentage >= 80 ? 'bg-emerald-100 text-emerald-700' : attempt.percentage >= 50 ? 'bg-amber-100 text-amber-700' : 'bg-rose-100 text-rose-700'}`}>{Math.round(attempt.percentage)}</span><div className="min-w-0 flex-1"><p className="truncate text-sm font-semibold text-slate-800">{attempt.test?.title ?? 'Shaxsiy mashq'}</p><p className="mt-0.5 text-xs text-slate-400">{new Date(attempt.finishedAt).toLocaleDateString('uz-UZ')}</p></div><Icon name="arrow" className="h-4 w-4 text-slate-300" /></Link>)}{!dashboard.recentAttempts.length && <EmptyState title="Natijalar hali yo‘q" description="Birinchi testingizdan keyin natijalar shu yerda ko‘rinadi." icon="history" />}</div></div>
       <div className="card"><div className="flex items-center justify-between"><div><p className="eyebrow mb-1">O‘sish</p><h2 className="text-lg font-bold">Mavzular bo‘yicha progress</h2></div><Link href="/progress" className="text-sm font-bold text-violet-600">Batafsil</Link></div><div className="mt-6 space-y-5">{dashboard.topicProgress.map(progress => <div key={progress.id}><div className="mb-2 flex justify-between gap-4 text-sm"><span className="font-semibold text-slate-700">{progress.topic.name}</span><span className="font-bold text-slate-900">{progress.averagePercentage}%</span></div><ProgressBar value={progress.averagePercentage} /></div>)}{!dashboard.topicProgress.length && <EmptyState title="Progress shakllanmoqda" description="Birinchi testdan keyin mavzular kesimidagi ko‘rsatkichlar paydo bo‘ladi." icon="progress" />}</div></div>
     </section>
   </>;
