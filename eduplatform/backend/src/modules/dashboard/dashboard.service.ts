@@ -9,7 +9,8 @@ export class DashboardService {
       this.prisma.testAttempt.findMany({ where: { userId, finishedAt: { not: null } }, include: { test: { include: { topic: true } } }, orderBy: { finishedAt: 'desc' } }),
       this.prisma.userTopicProgress.findMany({ where: { userId }, include: { topic: true }, orderBy: { averagePercentage: 'desc' } })
     ]);
-    const summary = { totalTests: attempts.length, averagePercentage: attempts.length ? Number((attempts.reduce((s, a) => s + a.percentage, 0) / attempts.length).toFixed(1)) : 0, bestPercentage: attempts.length ? Math.max(...attempts.map(a => a.percentage)) : 0 };
+    const graded = attempts.filter(a => !a.isPractice);
+    const summary = { totalTests: graded.length, averagePercentage: graded.length ? Number((graded.reduce((s, a) => s + a.percentage, 0) / graded.length).toFixed(1)) : 0, bestPercentage: graded.length ? Math.max(...graded.map(a => a.percentage)) : 0 };
     const topicIds = new Set(topicProgress.map(p => p.topicId));
     const topics = await this.prisma.topic.findMany({ where: { isActive: true } });
     const expected = new Map(topicProgress.map(p => [p.topicId, p.difficulty]));
