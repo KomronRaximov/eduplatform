@@ -26,3 +26,21 @@ Dashboard’dagi "Shaxsiy mashq" kartochkasi orqali o‘quvchi 12 ta savoldan ib
 Takrorlash Leitner qutilari (0–4) bilan ishlaydi: to‘g‘ri javobda quti bittaga oshadi, xatoda 0 ga qaytadi. Qutilar bo‘yicha takrorlash oralig‘i: 1, 2, 4, 8 va 16 kun. Oddiy testlar ham shu statistikani yangilaydi.
 
 Endpoint’lar (JWT talab qilinadi): `POST /api/practice/start`, `POST /api/practice/:attemptId/submit`, `GET /api/practice/overview`.
+
+## Video darslar
+
+Administrator `/admin/videos` sahifasida mavzularga video qo‘shadi: YouTube havolasi yoki `mp4`/`webm` fayl (200 MB gacha). Yuklangan fayllar `backend/uploads/videos` papkasida saqlanadi (`UPLOAD_DIR` bilan o‘zgartiriladi, git’ga kirmaydi).
+
+O‘quvchi dashboard’da, test natijasi sahifasida va `/videos` sahifasida videolarni ko‘radi. Zaif mavzulari (o‘rtacha natija 50% dan past, yiqilgan testlar, xato qilingan savollar) bo‘yicha dashboard’da tavsiya chiqadi.
+
+### AI tavsiyasi (Gemini)
+
+Tavsiyani Google Gemini tanlaydi va o‘zbekcha izoh yozadi. Kalit bo‘lmasa yoki AI ishlamasa, tavsiya avtomatik qoida bo‘yicha beriladi (AI belgisi chiqmaydi). Sozlash uchun `backend/.env` ga qo‘ying:
+
+```
+GEMINI_API_KEY="..."        # Google AI Studio (aistudio.google.com) dan olingan bepul kalit
+GEMINI_MODEL="gemini-2.5-flash"
+GEMINI_TIMEOUT_MS=8000
+```
+
+Natija 24 soatga saqlanadi va faqat zaif joylar o‘zgarganda qayta so‘raladi; AI xato bersa 10 daqiqa qayta chaqirilmaydi. AI’ga faqat zaif mavzular, xato savollar matni va video ma’lumotlari yuboriladi (ism, email yo‘q).
