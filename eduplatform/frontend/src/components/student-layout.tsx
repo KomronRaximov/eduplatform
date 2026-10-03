@@ -23,7 +23,7 @@ export function StudentLayout({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     const current = sessionUser();
     if (!current) router.replace('/login');
-    else if (current.role === 'ADMIN') router.replace('/admin');
+    else if (current.role === 'ADMIN' || current.role === 'TEACHER') router.replace('/admin');
     else setUser(current);
   }, [router]);
 
