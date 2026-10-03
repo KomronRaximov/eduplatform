@@ -5,3 +5,5 @@ export interface Test { id: string; title: string; description?: string; difficu
 export interface Question { id: string; text: string; order: number; points: number; options: { id: string; text: string; order: number }[]; }
 export interface Attempt { id: string; percentage: number; score: number; correctAnswers: number; wrongAnswers: number; totalQuestions: number; difficulty: Difficulty; recommendedDifficulty: Difficulty; finishedAt?: string; isPractice?: boolean; test: Test | null; }
 export interface PracticeOverview { dueCount: number; newCount: number; weakTopics: { topicId: string; name: string; averagePercentage: number }[]; failedTests: { testId: string; title: string; percentage: number }[]; }
+export interface Video { id: string; topicId: string; topic: { id: string; name: string }; title: string; description: string | null; difficulty: Difficulty | null; type: 'YOUTUBE' | 'UPLOAD'; youtubeId: string | null; fileUrl: string | null; isActive: boolean; }
+export interface VideoRecommendation { source: 'ai' | 'rules'; items: { video: Video; reason: string }[]; }
