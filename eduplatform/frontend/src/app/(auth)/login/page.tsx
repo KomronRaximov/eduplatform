@@ -15,9 +15,9 @@ export default function LoginPage() {
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
 
-  function useDemo(role: 'student' | 'admin') {
+  function useDemo(role: 'student' | 'teacher' | 'admin') {
     setEmail(`${role}@example.com`);
-    setPassword(role === 'admin' ? 'Admin123!' : 'Student123!');
+    setPassword(role === 'admin' ? 'Admin123!' : role === 'teacher' ? 'Teacher123!' : 'Student123!');
   }
 
   async function submit(event: React.FormEvent) {
@@ -25,7 +25,7 @@ export default function LoginPage() {
     try {
       const result = await api<{ accessToken: string; user: User }>('/auth/login', { method: 'POST', body: JSON.stringify({ email, password }) });
       saveSession(result.accessToken, result.user);
-      router.replace(result.user.role === 'ADMIN' ? '/admin' : '/dashboard');
+      router.replace(result.user.role === 'STUDENT' ? '/dashboard' : '/admin');
     } catch (caught) { setError((caught as Error).message); }
     finally { setBusy(false); }
   }
@@ -39,7 +39,7 @@ export default function LoginPage() {
       <button disabled={busy} className="btn-primary mt-7 w-full">{busy ? <><span className="h-4 w-4 animate-spin rounded-full border-2 border-white/40 border-t-white" />Kirilmoqda…</> : <>Kirish<Icon name="arrow" className="h-4 w-4" /></>}</button>
     </form>
     <div className="my-6 flex items-center gap-3 text-xs text-slate-400"><span className="h-px flex-1 bg-slate-200" />Demo akkaunt<span className="h-px flex-1 bg-slate-200" /></div>
-    <div className="grid grid-cols-2 gap-3"><button type="button" onClick={() => useDemo('student')} className="btn-secondary px-3"><Icon name="book" className="h-4 w-4" />Talaba</button><button type="button" onClick={() => useDemo('admin')} className="btn-secondary px-3"><Icon name="shield" className="h-4 w-4" />Admin</button></div>
+    <div className="grid grid-cols-3 gap-3"><button type="button" onClick={() => useDemo('student')} className="btn-secondary px-3"><Icon name="book" className="h-4 w-4" />Talaba</button><button type="button" onClick={() => useDemo('teacher')} className="btn-secondary px-3"><Icon name="users" className="h-4 w-4" />O‘qituvchi</button><button type="button" onClick={() => useDemo('admin')} className="btn-secondary px-3"><Icon name="shield" className="h-4 w-4" />Admin</button></div>
     <p className="mt-7 text-center text-sm text-slate-500">Akkauntingiz yo‘qmi? <Link className="font-bold text-violet-600 hover:text-violet-700" href="/register">Ro‘yxatdan o‘ting</Link></p>
   </div>;
 }

@@ -1,4 +1,4 @@
-import { ConflictException } from '@nestjs/common';
+import { BadRequestException, ConflictException } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { AdminService } from './admin.service';
 
@@ -35,5 +35,78 @@ describe('AdminService.deleteTopic removes uploaded video files', () => {
     const { service, f } = make(jest.fn().mockRejectedValue(fkError()));
     await expect(service.deleteTopic('t1')).rejects.toThrow(ConflictException);
     expect(f.remove).not.toHaveBeenCalled();
+  });
+});
+
+describe('AdminService.updateUser self-protection', () => {
+  const make = (existing: any = {}) => {
+    const prisma: any = { user: { update: jest.fn().mockResolvedValue({}), count: jest.fn().mockResolvedValue(2) } };
+    prisma.$transaction = jest.fn(async (fn: any) => fn(prisma));
+    const service = new AdminService(prisma, files() as any);
+    jest.spyOn(service, 'user').mockResolvedValue(existing);
+    return { service, prisma };
+  };
+  it('rejects changing own role', async () => {
+    const { service, prisma } = make();
+    await expect(service.updateUser('u1', { role: 'STUDENT' } as any, 'u1')).rejects.toThrow(BadRequestException);
+    expect(prisma.user.update).not.toHaveBeenCalled();
+  });
+  it('allows changing another user role', async () => {
+    const { service, prisma } = make();
+    await service.updateUser('u2', { role: 'TEACHER' } as any, 'u1');
+    expect(prisma.user.update).toHaveBeenCalled();
+  });
+  it('allows editing own currentDifficulty', async () => {
+    const { service, prisma } = make();
+    await service.updateUser('u1', { currentDifficulty: 'HARD' } as any, 'u1');
+    expect(prisma.user.update).toHaveBeenCalled();
+  });
+});
+
+describe('AdminService last-admin protection', () => {
+  const MESSAGE = 'Tizimda kamida bitta administrator qolishi kerak';
+  const make = (role: string, admins: number) => {
+    const tx: any = { user: { count: jest.fn().mockResolvedValue(admins), update: jest.fn().mockResolvedValue({}), delete: jest.fn().mockResolvedValue({}) } };
+    const prisma: any = { user: { update: jest.fn(), delete: jest.fn(), count: jest.fn() }, $transaction: jest.fn(async (fn: any) => fn(tx)) };
+    const service = new AdminService(prisma, files() as any);
+    jest.spyOn(service, 'user').mockResolvedValue({ id: 'a1', role } as any);
+    return { service, prisma, tx };
+  };
+  it('rejects demoting the last admin and writes nothing', async () => {
+    const { service, tx, prisma } = make('ADMIN', 1);
+    await expect(service.updateUser('a1', { role: 'TEACHER' } as any, 'other')).rejects.toThrow(new BadRequestException(MESSAGE));
+    expect(tx.user.count).toHaveBeenCalledWith({ where: { role: 'ADMIN' } });
+    expect(tx.user.update).not.toHaveBeenCalled();
+    expect(prisma.user.update).not.toHaveBeenCalled();
+  });
+  it('allows demoting one of two admins, writing through the transaction client', async () => {
+    const { service, tx, prisma } = make('ADMIN', 2);
+    await service.updateUser('a1', { role: 'TEACHER' } as any, 'other');
+    expect(tx.user.update).toHaveBeenCalledWith(expect.objectContaining({ where: { id: 'a1' }, data: { role: 'TEACHER' } }));
+    expect(prisma.user.update).not.toHaveBeenCalled();
+  });
+  it('does not count admins when the role stays ADMIN or the target is not an admin', async () => {
+    const same = make('ADMIN', 1);
+    await same.service.updateUser('a1', { role: 'ADMIN', firstName: 'X' } as any, 'other');
+    expect(same.tx.user.update).toHaveBeenCalled();
+    const student = make('STUDENT', 1);
+    await student.service.updateUser('a1', { role: 'TEACHER' } as any, 'other');
+    expect(student.tx.user.update).toHaveBeenCalled();
+  });
+  it('rejects deleting the last admin', async () => {
+    const { service, tx } = make('ADMIN', 1);
+    await expect(service.deleteUser('a1')).rejects.toThrow(new BadRequestException(MESSAGE));
+    expect(tx.user.delete).not.toHaveBeenCalled();
+  });
+  it('allows deleting one of two admins', async () => {
+    const { service, tx } = make('ADMIN', 2);
+    await expect(service.deleteUser('a1')).resolves.toEqual({ success: true });
+    expect(tx.user.delete).toHaveBeenCalledWith({ where: { id: 'a1' } });
+  });
+  it('allows deleting a non-admin without counting admins', async () => {
+    const { service, tx } = make('STUDENT', 1);
+    await expect(service.deleteUser('a1')).resolves.toEqual({ success: true });
+    expect(tx.user.count).not.toHaveBeenCalled();
+    expect(tx.user.delete).toHaveBeenCalled();
   });
 });

@@ -8,19 +8,22 @@ datasource db {
 }
 
 model User {
-  id                  String                   @id @default(uuid())
-  firstName           String
-  lastName            String
-  email               String                   @unique
-  passwordHash        String
-  role                String                   @default("STUDENT")
-  currentDifficulty   String                   @default("EASY")
-  attempts            TestAttempt[]
-  topicProgress       UserTopicProgress[]
-  questionStats       UserQuestionStat[]
-  videoRecommendation UserVideoRecommendation?
-  createdAt           DateTime                 @default(now())
-  updatedAt           DateTime                 @updatedAt
+  id                   String                   @id @default(uuid())
+  firstName            String
+  lastName             String
+  email                String                   @unique
+  passwordHash         String
+  role                 String                   @default("STUDENT")
+  currentDifficulty    String                   @default("EASY")
+  attempts             TestAttempt[]
+  topicProgress        UserTopicProgress[]
+  questionStats        UserQuestionStat[]
+  videoRecommendation  UserVideoRecommendation?
+  studentConversations Conversation[]           @relation("StudentConversations")
+  teacherConversations Conversation[]           @relation("TeacherConversations")
+  messages             Message[]
+  createdAt            DateTime                 @default(now())
+  updatedAt            DateTime                 @updatedAt
 }
 
 model Topic {
@@ -193,4 +196,34 @@ model UserVideoRecommendation {
   itemsJson String
   createdAt DateTime @default(now())
   user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model Conversation {
+  id            String    @id @default(uuid())
+  studentId     String
+  teacherId     String
+  student       User      @relation("StudentConversations", fields: [studentId], references: [id], onDelete: Cascade)
+  teacher       User      @relation("TeacherConversations", fields: [teacherId], references: [id], onDelete: Cascade)
+  messages      Message[]
+  lastMessageAt DateTime
+  createdAt     DateTime  @default(now())
+
+  @@unique([studentId, teacherId])
+  @@index([studentId, lastMessageAt])
+  @@index([teacherId, lastMessageAt])
+}
+
+model Message {
+  id             String       @id @default(uuid())
+  conversationId String
+  senderId       String
+  conversation   Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  sender         User         @relation(fields: [senderId], references: [id], onDelete: Cascade)
+  body           String
+  createdAt      DateTime     @default(now())
+  readAt         DateTime?
+
+  @@index([conversationId, createdAt])
+  @@index([conversationId, readAt])
+  @@index([senderId, createdAt])
 }

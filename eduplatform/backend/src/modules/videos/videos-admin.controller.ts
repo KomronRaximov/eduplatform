@@ -10,7 +10,7 @@ import { CreateVideoDto, UpdateVideoDto, VideoFilterDto } from './dto/video.dto'
 import { videoMulterOptions } from './video-upload';
 import { VideosService } from './videos.service';
 
-@ApiTags('Admin videos') @ApiBearerAuth() @UseGuards(JwtAuthGuard, RolesGuard) @Roles(UserRole.ADMIN) @Controller('admin/videos')
+@ApiTags('Admin videos') @ApiBearerAuth() @UseGuards(JwtAuthGuard, RolesGuard) @Roles(UserRole.ADMIN, UserRole.TEACHER) @Controller('admin/videos')
 export class VideosAdminController {
   constructor(private videos: VideosService) {}
   @Get() list(@Query() q: VideoFilterDto) { return this.videos.listAdmin(q.topicId); }
