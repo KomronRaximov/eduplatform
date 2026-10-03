@@ -15,10 +15,11 @@ const questionsFor = (topic: string, difficulty: Difficulty) => Array.from({ len
   ] } };
 });
 async function main() {
-  await prisma.userVideoRecommendation.deleteMany(); await prisma.video.deleteMany(); await prisma.practiceAttemptQuestion.deleteMany(); await prisma.userQuestionStat.deleteMany(); await prisma.attemptAnswer.deleteMany(); await prisma.testAttempt.deleteMany(); await prisma.userTopicProgress.deleteMany(); await prisma.answerOption.deleteMany(); await prisma.question.deleteMany(); await prisma.test.deleteMany(); await prisma.topic.deleteMany(); await prisma.user.deleteMany();
+  await prisma.message.deleteMany(); await prisma.conversation.deleteMany(); await prisma.userVideoRecommendation.deleteMany(); await prisma.video.deleteMany(); await prisma.practiceAttemptQuestion.deleteMany(); await prisma.userQuestionStat.deleteMany(); await prisma.attemptAnswer.deleteMany(); await prisma.testAttempt.deleteMany(); await prisma.userTopicProgress.deleteMany(); await prisma.answerOption.deleteMany(); await prisma.question.deleteMany(); await prisma.test.deleteMany(); await prisma.topic.deleteMany(); await prisma.user.deleteMany();
   const passwordHash = await bcrypt.hash('Admin123!', 12);
   await prisma.user.create({ data: { firstName: 'Administrator', lastName: 'Demo', email: 'admin@example.com', passwordHash, role: UserRole.ADMIN } });
   await prisma.user.create({ data: { firstName: 'Talaba', lastName: 'Demo', email: 'student@example.com', passwordHash: await bcrypt.hash('Student123!', 12) } });
+  await prisma.user.create({ data: { firstName: 'O‘qituvchi', lastName: 'Demo', email: 'teacher@example.com', passwordHash: await bcrypt.hash('Teacher123!', 12), role: UserRole.TEACHER } });
   for (const [name, description] of topicData) {
     const topic = await prisma.topic.create({ data: { name, description } });
     for (const difficulty of difficulties) await prisma.test.create({ data: { title: `${name} — ${labels[difficulty]}`, description: `${name} fanidan ${labels[difficulty].toLowerCase()} darajadagi demo test.`, topicId: topic.id, difficulty, durationMinutes: 20, questions: { create: questionsFor(name, difficulty) } } });
