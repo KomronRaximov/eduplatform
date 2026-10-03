@@ -12,3 +12,10 @@ export const Difficulty = {
 } as const;
 
 export type Difficulty = (typeof Difficulty)[keyof typeof Difficulty];
+
+export const VideoType = {
+  YOUTUBE: 'YOUTUBE',
+  UPLOAD: 'UPLOAD',
+} as const;
+
+export type VideoType = (typeof VideoType)[keyof typeof VideoType];
