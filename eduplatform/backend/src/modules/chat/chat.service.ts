@@ -143,6 +143,11 @@ export class ChatService {
   async send(userId: string, conversationId: string, body: string): Promise<ChatMessageDto> {
     await this.actor(userId);
     const conversation = await this.assertParticipant(userId, conversationId);
+    const pair = await this.prisma.user.findMany({ where: { id: { in: [conversation.studentId, conversation.teacherId] } }, select: { id: true, role: true } });
+    const roleOf = (id: string) => pair.find(user => user.id === id)?.role;
+    if (roleOf(conversation.studentId) !== UserRole.STUDENT || roleOf(conversation.teacherId) !== UserRole.TEACHER) {
+      throw new ForbiddenException('Chat faqat talaba va o‘qituvchilar uchun');
+    }
     const text = typeof body === 'string' ? body.trim() : '';
     if (!text) throw new BadRequestException('Xabar bo‘sh bo‘lmasligi kerak');
     if (text.length > MAX_BODY) throw new BadRequestException(`Xabar ${MAX_BODY} belgidan oshmasligi kerak`);

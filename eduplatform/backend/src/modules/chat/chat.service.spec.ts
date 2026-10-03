@@ -8,7 +8,7 @@ function setup(users: Record<string, any> = {}, over: any = {}) {
   const prisma: any = {
     user: {
       findUnique: jest.fn(async ({ where }: any) => users[where.id] ?? null),
-      findMany: jest.fn().mockResolvedValue([]),
+      findMany: jest.fn(async ({ where }: any = {}) => (where?.id?.in ? where.id.in.map((id: string) => users[id]).filter(Boolean) : [])),
     },
     conversation: {
       findUnique: jest.fn().mockResolvedValue(null),
@@ -167,6 +167,27 @@ describe('ChatService.send', () => {
   const users = { s1: u('s1', 'STUDENT'), t1: u('t1', 'TEACHER') };
   const make = () => setup(users, { findUnique: jest.fn().mockResolvedValue(conv()) });
 
+  it('rejects when the counterparty role is no longer valid, in both directions', async () => {
+    const cases: [string, any][] = [
+      ['s1', { s1: u('s1', 'STUDENT'), t1: u('t1', 'STUDENT') }],
+      ['s1', { s1: u('s1', 'STUDENT'), t1: u('t1', 'ADMIN') }],
+      ['t1', { s1: u('s1', 'TEACHER'), t1: u('t1', 'TEACHER') }],
+      ['t1', { s1: u('s1', 'ADMIN'), t1: u('t1', 'TEACHER') }],
+    ];
+    for (const [sender, map] of cases) {
+      const { service, prisma, gateway } = setup(map, { findUnique: jest.fn().mockResolvedValue(conv()) });
+      await expect(service.send(sender, 'c1', 'hi')).rejects.toThrow(new ForbiddenException('Chat faqat talaba va o‘qituvchilar uchun'));
+      expect(prisma.message.create).not.toHaveBeenCalled();
+      expect(prisma.$transaction).not.toHaveBeenCalled();
+      expect(gateway.emitToUser).not.toHaveBeenCalled();
+    }
+  });
+  it('teacher can send to the student (emits to the right users)', async () => {
+    const { service, gateway } = make();
+    const dto = await service.send('t1', 'c1', 'hi');
+    expect(gateway.emitToUser.mock.calls.map(c => [c[0], c[1]])).toEqual([['t1', 'chat:message'], ['s1', 'chat:message'], ['s1', 'chat:unread']]);
+    expect(dto.senderId).toBe('t1');
+  });
   it('trims the body and stores it', async () => {
     const { service, prisma } = make();
     const dto = await service.send('s1', 'c1', '  salom  ');
