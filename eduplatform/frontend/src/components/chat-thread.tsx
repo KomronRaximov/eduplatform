@@ -21,6 +21,9 @@ export function ChatThread({ conversationId, other, currentUserId, onBack }: { c
   const [loadingOlder, setLoadingOlder] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
   const markedRef = useRef<string | null>(null);
+  const attemptsRef = useRef<Record<string, number>>({});
+  const retryTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
+  const [retryTick, setRetryTick] = useState(0);
 
   const { data, isLoading, error: loadError } = useQuery({
     queryKey: key,
@@ -47,8 +50,17 @@ export function ChatThread({ conversationId, other, currentUserId, onBack }: { c
       qc.invalidateQueries({ queryKey: ['chat', 'conversations'] });
       qc.invalidateQueries({ queryKey: ['chat', 'unread'] });
     },
+    // Silent retry (max 3 attempts per newest message id, 3s apart) so a transient failure doesn't leave the conversation unread.
+    onError: () => {
+      const id = markedRef.current;
+      if (!id) return;
+      attemptsRef.current[id] = (attemptsRef.current[id] ?? 0) + 1;
+      if (attemptsRef.current[id] >= 3) return;
+      retryTimer.current = setTimeout(() => { if (markedRef.current === id) { markedRef.current = null; setRetryTick((t) => t + 1); } }, 3000);
+    },
   });
   const { mutate: markReadMutate } = markRead;
+  useEffect(() => () => clearTimeout(retryTimer.current), []);
 
   // Mark as read when the newest message is from the other party and unread (once per newest message id).
   useEffect(() => {
@@ -57,7 +69,7 @@ export function ChatThread({ conversationId, other, currentUserId, onBack }: { c
     if (markedRef.current === last.id) return;
     markedRef.current = last.id;
     markReadMutate();
-  }, [items, currentUserId, markReadMutate]);
+  }, [items, currentUserId, markReadMutate, retryTick]);
 
   // Scroll to the bottom only when the newest message changes (not when older ones are prepended).
   useLayoutEffect(() => {
