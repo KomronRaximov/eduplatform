@@ -33,7 +33,7 @@ describe('GeminiClient', () => {
 
   it('throws on HTTP errors without leaking the key', async () => {
     global.fetch = jest.fn().mockResolvedValue({ ok: false, status: 429, json: async () => ({}) }) as any;
-    const error = await client.generateJson('x', {}).catch(e => e as Error);
+    const error: Error = await client.generateJson('x', {}).then(() => new Error('no error'), (e: Error) => e);
     expect(error.message).toContain('429');
     expect(error.message).not.toContain('secret-key-123');
   });
