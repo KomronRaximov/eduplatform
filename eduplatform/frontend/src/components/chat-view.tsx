@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '../lib/api';
 import { getSocket } from '../lib/socket';
 import { ChatContact, ChatConversation } from '../types';
@@ -45,6 +45,7 @@ export function ChatView({ currentUserId }: { currentUserId: string }) {
   const [picking, setPicking] = useState(false);
   const [error, setError] = useState('');
   const [reconnecting, setReconnecting] = useState(false);
+  const qc = useQueryClient();
 
   const { data: conversations, isLoading, error: listError } = useQuery({
     queryKey: ['chat', 'conversations'],
@@ -69,6 +70,7 @@ export function ChatView({ currentUserId }: { currentUserId: string }) {
     setError('');
     try {
       const conversation = await api<ChatConversation>('/chat/conversations', { method: 'POST', body: JSON.stringify({ userId: contact.id }) });
+      qc.invalidateQueries({ queryKey: ['chat', 'conversations'] });
       open(conversation.id, conversation.other ?? contact);
     } catch (e) {
       setError(e instanceof Error ? e.message : 'So‘rov bajarilmadi');
