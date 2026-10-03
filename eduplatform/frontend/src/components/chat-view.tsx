@@ -1,9 +1,10 @@
 'use client';
 
+import Link from 'next/link';
 import { useEffect, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '../lib/api';
-import { getSocket } from '../lib/socket';
+import { getSocket, socketAuthFailed } from '../lib/socket';
 import { ChatContact, ChatConversation } from '../types';
 import { ChatThread, personName } from './chat-thread';
 import { Icon } from './icons';
@@ -44,7 +45,8 @@ export function ChatView({ currentUserId }: { currentUserId: string }) {
   const [activeOther, setActiveOther] = useState<ChatContact | null>(null);
   const [picking, setPicking] = useState(false);
   const [error, setError] = useState('');
-  const [reconnecting, setReconnecting] = useState(false);
+  // connecting = first attempt (no banner); lost = connection dropped or a network connect_error (socket.io keeps retrying); expired = token rejected/expired (no retries).
+  const [link, setLink] = useState<'connecting' | 'online' | 'lost' | 'expired'>('connecting');
   const qc = useQueryClient();
 
   const { data: conversations, isLoading, error: listError } = useQuery({
@@ -55,13 +57,13 @@ export function ChatView({ currentUserId }: { currentUserId: string }) {
   useEffect(() => {
     const socket = getSocket();
     if (!socket) return;
-    const down = () => setReconnecting(true);
-    const up = () => setReconnecting(false);
-    setReconnecting(!socket.connected);
-    socket.on('connect', up);
-    socket.on('disconnect', down);
-    socket.on('connect_error', down);
-    return () => { socket.off('connect', up); socket.off('disconnect', down); socket.off('connect_error', down); };
+    const online = () => setLink('online');
+    const lost = (reason?: unknown) => setLink(socketAuthFailed() ? 'expired' : reason === 'io client disconnect' ? 'connecting' : 'lost');
+    setLink(socketAuthFailed() ? 'expired' : socket.connected ? 'online' : 'connecting');
+    socket.on('connect', online);
+    socket.on('disconnect', lost);
+    socket.on('connect_error', lost);
+    return () => { socket.off('connect', online); socket.off('disconnect', lost); socket.off('connect_error', lost); };
   }, []);
 
   const open = (id: string, other: ChatContact) => { setActiveId(id); setActiveOther(other); setPicking(false); };
@@ -83,7 +85,8 @@ export function ChatView({ currentUserId }: { currentUserId: string }) {
   return (
     <div>
       <PageHeader eyebrow="Muloqot" title="Xabarlar" description="Ustoz va talabalar o‘rtasidagi suhbatlar." />
-      {reconnecting && <p className="mb-3 text-sm font-medium text-amber-600" role="status">Qayta ulanmoqda…</p>}
+      {link === 'lost' && <p className="mb-3 text-sm font-medium text-amber-600" role="status">Qayta ulanmoqda…</p>}
+      {link === 'expired' && <p className="mb-3 text-sm font-medium text-rose-600" role="alert">Sessiya muddati tugagan. <Link href="/login" className="underline">Qayta kiring.</Link></p>}
       {error && <div className="mb-3"><ErrorBox message={error} /></div>}
       <div className="card flex h-[calc(100vh-15rem)] min-h-[420px] overflow-hidden !p-0">
         <aside className={`${activeId && other ? 'hidden md:flex' : 'flex'} min-h-0 w-full flex-col border-slate-100 md:w-80 md:shrink-0 md:border-r`}>
