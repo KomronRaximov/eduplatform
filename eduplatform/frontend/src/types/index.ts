@@ -4,4 +4,4 @@ export interface Topic { id: string; name: string; description?: string; isActiv
 export interface Test { id: string; title: string; description?: string; difficulty: Difficulty; durationMinutes?: number; isActive: boolean; topic: Topic; _count?: { questions: number }; questions?: Question[]; }
 export interface Question { id: string; text: string; order: number; points: number; options: { id: string; text: string; order: number }[]; }
 export interface Attempt { id: string; percentage: number; score: number; correctAnswers: number; wrongAnswers: number; totalQuestions: number; difficulty: Difficulty; recommendedDifficulty: Difficulty; finishedAt?: string; isPractice?: boolean; test: Test | null; }
-export interface PracticeOverview { dueCount: number; newCount: number; weakTopics: { topicId: string; name: string; averagePercentage: number }[]; }
+export interface PracticeOverview { dueCount: number; newCount: number; weakTopics: { topicId: string; name: string; averagePercentage: number }[]; failedTests: { testId: string; title: string; percentage: number }[]; }

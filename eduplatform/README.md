@@ -21,7 +21,7 @@ Demo akkauntlar: `admin@example.com` / `Admin123!`, `student@example.com` / `Stu
 
 ## Shaxsiy mashq (oraliqli takrorlash)
 
-Dashboard’dagi "Shaxsiy mashq" kartochkasi orqali o‘quvchi 12 ta savoldan iborat moslashgan sessiyani boshlaydi: hali ko‘rilmagan savollar (zaif mavzular ustuvor) va takrorlash vaqti kelgan savollar (ko‘pi bilan 6 ta) aralashtiriladi.
+Dashboard’dagi "Shaxsiy mashq" kartochkasi orqali o‘quvchi 12 ta savoldan iborat moslashgan sessiyani boshlaydi: hali ko‘rilmagan savollar va takrorlash vaqti kelgan savollar (ko‘pi bilan 6 ta) aralashtiriladi. Natijasi 50% dan past bo‘lgan (yiqilgan) testlar ustuvor: ularning ko‘rilmagan savollari birinchi tanlanadi, xato qilingan savollari esa takrorlash muddatini kutmasdan qaytariladi. Keyin zaif mavzular keladi.
 
 Takrorlash Leitner qutilari (0–4) bilan ishlaydi: to‘g‘ri javobda quti bittaga oshadi, xatoda 0 ga qaytadi. Qutilar bo‘yicha takrorlash oralig‘i: 1, 2, 4, 8 va 16 kun. Oddiy testlar ham shu statistikani yangilaydi.
 

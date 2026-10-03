@@ -9,6 +9,7 @@ import { QuestionStatsService } from './question-stats.service';
 export type PracticeQuestion = { id: string; text: string; order: number; points: number; options: { id: string; text: string; order: number }[] };
 
 const WEAK_TOPIC_BELOW = 50;
+const PASS_PERCENTAGE = 50;
 const LEVELS: string[] = [Difficulty.EASY, Difficulty.MEDIUM, Difficulty.HARD];
 const questionSelect = { id: true, text: true, order: true, points: true, options: { orderBy: { order: 'asc' as const }, select: { id: true, text: true, order: true, isCorrect: true } } };
 const toPublic = (q: { id: string; text: string; order: number; points: number; options: { id: string; text: string; order: number }[] }): PracticeQuestion => ({ id: q.id, text: q.text, order: q.order, points: q.points, options: q.options.map(o => ({ id: o.id, text: o.text, order: o.order })) });
@@ -19,17 +20,26 @@ export class PracticeService {
   constructor(private prisma: PrismaService, private stats: QuestionStatsService) {}
 
   private async loadPools(userId: string, now: Date, currentDifficulty: string) {
-    const [questions, progress] = await Promise.all([
-      this.prisma.question.findMany({ where: { test: { isActive: true, topic: { isActive: true } } }, select: { ...questionSelect, test: { select: { topicId: true, difficulty: true } }, stats: { where: { userId }, select: { box: true, nextReviewAt: true } } } }),
+    const [questions, progress, finished] = await Promise.all([
+      this.prisma.question.findMany({ where: { test: { isActive: true, topic: { isActive: true } } }, select: { ...questionSelect, testId: true, test: { select: { topicId: true, difficulty: true } }, stats: { where: { userId }, select: { box: true, nextReviewAt: true } } } }),
       this.prisma.userTopicProgress.findMany({ where: { userId }, include: { topic: true } }),
+      this.prisma.testAttempt.findMany({ where: { userId, isPractice: false, finishedAt: { not: null } }, orderBy: { finishedAt: 'desc' }, select: { testId: true, percentage: true, test: { select: { title: true } } } }),
     ]);
+    const latestByTest = new Map<string, (typeof finished)[number]>();
+    for (const attempt of finished) if (attempt.testId && !latestByTest.has(attempt.testId)) latestByTest.set(attempt.testId, attempt);
+    const activeTestIds = new Set(questions.map(q => q.testId));
+    const failedTests = [...latestByTest.values()].filter(a => a.percentage < PASS_PERCENTAGE && activeTestIds.has(a.testId!)).sort((a, b) => a.percentage - b.percentage);
+    const failedIds = new Set(failedTests.map(a => a.testId));
     const weakTopics = new Set(progress.filter(p => p.averagePercentage < WEAK_TOPIC_BELOW).map(p => p.topicId));
     const level = LEVELS.indexOf(currentDifficulty);
-    const rank = (q: (typeof questions)[number]) => (weakTopics.has(q.test.topicId) ? 0 : 1000) + Math.abs(LEVELS.indexOf(q.test.difficulty) - level);
-    const due = questions.filter(q => q.stats[0] && q.stats[0].nextReviewAt <= now).sort((a, b) => a.stats[0].nextReviewAt.getTime() - b.stats[0].nextReviewAt.getTime());
+    const rank = (q: (typeof questions)[number]) => (failedIds.has(q.testId) ? 0 : weakTopics.has(q.test.topicId) ? 1000 : 2000) + Math.abs(LEVELS.indexOf(q.test.difficulty) - level);
+    const dueNow = questions.filter(q => q.stats[0] && q.stats[0].nextReviewAt <= now).sort((a, b) => a.stats[0].nextReviewAt.getTime() - b.stats[0].nextReviewAt.getTime());
     const fresh = questions.filter(q => !q.stats[0]).sort((a, b) => rank(a) - rank(b));
-    const filler = questions.filter(q => q.stats[0] && q.stats[0].nextReviewAt > now && q.stats[0].box <= 1);
-    return { due, fresh, filler, progress };
+    const notDueYet = questions.filter(q => q.stats[0] && q.stats[0].nextReviewAt > now && q.stats[0].box <= 1);
+    const failedWrong = notDueYet.filter(q => failedIds.has(q.testId));
+    const due = [...dueNow, ...failedWrong];
+    const filler = notDueYet.filter(q => !failedIds.has(q.testId));
+    return { due, fresh, filler, progress, failedTests };
   }
 
   async start(userId: string, now = new Date()): Promise<{ attemptId: string | null; questions: PracticeQuestion[] }> {
@@ -63,8 +73,8 @@ export class PracticeService {
   }
 
   async overview(userId: string, now = new Date()) {
-    const { due, fresh, progress } = await this.loadPools(userId, now, Difficulty.EASY);
+    const { due, fresh, progress, failedTests } = await this.loadPools(userId, now, Difficulty.EASY);
     const weakTopics = progress.filter(p => p.averagePercentage < WEAK_TOPIC_BELOW).sort((a, b) => a.averagePercentage - b.averagePercentage).slice(0, 3).map(p => ({ topicId: p.topicId, name: p.topic.name, averagePercentage: p.averagePercentage }));
-    return { dueCount: due.length, newCount: fresh.length, weakTopics };
+    return { dueCount: due.length, newCount: fresh.length, weakTopics, failedTests: failedTests.slice(0, 3).map(a => ({ testId: a.testId!, title: a.test!.title, percentage: a.percentage })) };
   }
 }

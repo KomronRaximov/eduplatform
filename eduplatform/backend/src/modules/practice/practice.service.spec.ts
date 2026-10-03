@@ -3,14 +3,14 @@ import { PracticeService } from './practice.service';
 
 const now = new Date('2026-10-03T10:00:00Z');
 const day = 86_400_000;
-const makeQuestion = (id: string, over: any = {}) => ({ id, text: `Savol ${id}`, order: 1, points: 1, options: [{ id: `${id}-a`, text: 'A', order: 1, isCorrect: true }, { id: `${id}-b`, text: 'B', order: 2, isCorrect: false }], test: { topicId: 't1', difficulty: 'EASY' }, stats: [], ...over });
+const makeQuestion = (id: string, over: any = {}) => ({ id, text: `Savol ${id}`, order: 1, points: 1, options: [{ id: `${id}-a`, text: 'A', order: 1, isCorrect: true }, { id: `${id}-b`, text: 'B', order: 2, isCorrect: false }], testId: 'tX', test: { topicId: 't1', difficulty: 'EASY' }, stats: [], ...over });
 const stat = (box: number, nextReviewAt: Date) => [{ box, nextReviewAt }];
 
-function setup(opts: { questions?: any[]; open?: any; attempt?: any; progress?: any[] } = {}) {
+function setup(opts: { questions?: any[]; open?: any; attempt?: any; progress?: any[]; finished?: any[] } = {}) {
   const tx: any = { attemptAnswer: { createMany: jest.fn() }, testAttempt: { update: jest.fn() }, userTopicProgress: { upsert: jest.fn() }, user: { update: jest.fn() } };
   tx.testAttempt.updateMany = jest.fn().mockResolvedValue({ count: 1 });
   const prisma: any = {
-    testAttempt: { findFirst: jest.fn().mockResolvedValue(opts.open ?? null), findUnique: jest.fn().mockResolvedValue(opts.attempt ?? null), create: jest.fn().mockResolvedValue({ id: 'new-attempt' }) },
+    testAttempt: { findMany: jest.fn().mockResolvedValue(opts.finished ?? []), findFirst: jest.fn().mockResolvedValue(opts.open ?? null), findUnique: jest.fn().mockResolvedValue(opts.attempt ?? null), create: jest.fn().mockResolvedValue({ id: 'new-attempt' }) },
     user: { findUniqueOrThrow: jest.fn().mockResolvedValue({ currentDifficulty: 'EASY' }), update: tx.user.update },
     question: { findMany: jest.fn().mockResolvedValue(opts.questions ?? []) },
     userTopicProgress: { findMany: jest.fn().mockResolvedValue(opts.progress ?? []), upsert: tx.userTopicProgress.upsert },
@@ -122,5 +122,38 @@ describe('PracticeService.submit writes answers once', () => {
     await service.submit('u1', 'a1', { answers: [] }, now);
     expect(tx.attemptAnswer.createMany).toHaveBeenCalledTimes(1);
     expect(tx.attemptAnswer.createMany.mock.calls[0][0].data).toHaveLength(2);
+  });
+});
+
+describe('PracticeService targets failed tests', () => {
+  const failed = (testId: string, percentage: number, title = `Test ${testId}`) => ({ testId, percentage, test: { title } });
+  const tomorrow = new Date(now.getTime() + day);
+  it('puts unseen questions of a failed test first', async () => {
+    const questions = [...Array.from({ length: 20 }, (_, i) => makeQuestion(`other${i}`)), ...Array.from({ length: 5 }, (_, i) => makeQuestion(`fail${i}`, { testId: 'tF' }))];
+    const { service } = setup({ questions, finished: [failed('tF', 30)] });
+    const ids = (await service.start('u1', now)).questions.map(q => q.id);
+    for (let i = 0; i < 5; i++) expect(ids).toContain(`fail${i}`);
+  });
+  it('brings back wrong answers of a failed test before their review date', async () => {
+    const questions = [...Array.from({ length: 20 }, (_, i) => makeQuestion(`new${i}`)), makeQuestion('failedWrong', { testId: 'tF', stats: stat(0, tomorrow) }), makeQuestion('otherWrong', { testId: 'tP', stats: stat(0, tomorrow) })];
+    const { service } = setup({ questions, finished: [failed('tF', 30)] });
+    const ids = (await service.start('u1', now)).questions.map(q => q.id);
+    expect(ids).toContain('failedWrong');
+    expect(ids).not.toContain('otherWrong');
+  });
+  it('does not treat a test as failed once the latest attempt passed', async () => {
+    const questions = [...Array.from({ length: 20 }, (_, i) => makeQuestion(`new${i}`)), makeQuestion('wrongInPassed', { testId: 'tF', stats: stat(0, tomorrow) })];
+    const { service } = setup({ questions, finished: [failed('tF', 80), failed('tF', 20)] });
+    expect((await service.start('u1', now)).questions.map(q => q.id)).not.toContain('wrongInPassed');
+  });
+  it('lists failed tests in the overview, worst first, at most 3', async () => {
+    const { service } = setup({ questions: ['a', 'b', 'c', 'd', 'e'].map(id => makeQuestion(`q-${id}`, { testId: id })), finished: [failed('a', 40), failed('b', 10), failed('c', 30), failed('d', 20), failed('e', 90)] });
+    const result = await service.overview('u1', now);
+    expect(result.failedTests.map(t => t.testId)).toEqual(['b', 'd', 'c']);
+    expect(result.failedTests[0]).toMatchObject({ title: 'Test b', percentage: 10 });
+  });
+  it('ignores failed tests that no longer have active questions', async () => {
+    const { service } = setup({ questions: [makeQuestion('q1', { testId: 'active' })], finished: [failed('gone', 10), failed('active', 20)] });
+    expect((await service.overview('u1', now)).failedTests.map(t => t.testId)).toEqual(['active']);
   });
 });
