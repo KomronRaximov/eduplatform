@@ -21,7 +21,7 @@ export default function UsersPage() {
     else setMe(current);
   }, [router]);
   const changeRole = useMutation({ mutationFn: ({ id, role }: { id: string; role: Role }) => api('/admin/users/' + id, { method: 'PATCH', body: JSON.stringify({ role }) }), onSuccess: () => { setRoleError(''); queryClient.invalidateQueries({ queryKey: ['admin', 'users'] }); }, onError: caught => setRoleError((caught as Error).message) });
-  const roleSelect = (user: User) => <select className="input !mt-0 !w-auto !py-1.5 text-xs" aria-label="Rol" value={user.role} disabled={user.id === me?.id || changeRole.isPending} onChange={e => changeRole.mutate({ id: user.id, role: e.target.value as Role })}>{roleOptions.map(option => <option key={option.value} value={option.value}>{option.label}</option>)}</select>;
+  const roleSelect = (user: User) => <select className="input !mt-0 !w-auto !py-1.5 text-xs" aria-label={`${user.firstName} ${user.lastName} roli`} value={user.role} disabled={user.id === me?.id || changeRole.isPending} onChange={e => changeRole.mutate({ id: user.id, role: e.target.value as Role })}>{roleOptions.map(option => <option key={option.value} value={option.value}>{option.label}</option>)}</select>;
   const { data, isLoading, error } = useQuery({ enabled: me?.role === 'ADMIN', queryKey: ['admin', 'users'], queryFn: () => api<{ items: User[]; meta: { total: number } }>('/admin/users') });
   if (!me || me.role !== 'ADMIN' || isLoading) return <Loading />;
   if (error) return <ErrorBox message={error.message} />;

@@ -98,7 +98,7 @@ export function ChatView({ currentUserId }: { currentUserId: string }) {
                 {listError && <div className="p-3"><ErrorBox message={listError.message} /></div>}
                 {conversations && conversations.length === 0 && <EmptyState icon="chat" title="Suhbatlar yo‘q" description="“Yangi suhbat” orqali yozishni boshlang." />}
                 {conversations?.map((c) => (
-                  <button key={c.id} type="button" onClick={() => open(c.id, c.other)} className={`flex w-full items-center gap-3 border-b border-slate-50 px-4 py-3 text-left hover:bg-slate-50 ${c.id === activeId ? 'bg-violet-50' : ''}`}>
+                  <button key={c.id} type="button" aria-current={c.id === activeId ? "true" : undefined} onClick={() => open(c.id, c.other)} className={`flex w-full items-center gap-3 border-b border-slate-50 px-4 py-3 text-left hover:bg-slate-50 ${c.id === activeId ? 'bg-violet-50' : ''}`}>
                     <span className="grid h-10 w-10 shrink-0 place-items-center rounded-full bg-violet-100 text-sm font-bold text-violet-700">{(c.other.firstName[0] ?? '?').toUpperCase()}</span>
                     <span className="min-w-0 flex-1"><b className="block truncate text-sm text-slate-900">{personName(c.other)}</b><span className="block truncate text-xs text-slate-500">{c.lastMessage ? `${c.lastMessage.senderId === currentUserId ? 'Siz: ' : ''}${c.lastMessage.body}` : 'Xabarlar yo‘q'}</span></span>
                     {c.unreadCount > 0 && <span className="grid h-5 min-w-5 shrink-0 place-items-center rounded-full bg-violet-600 px-1.5 text-[11px] font-bold text-white">{c.unreadCount}</span>}
