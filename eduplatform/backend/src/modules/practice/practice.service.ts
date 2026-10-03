@@ -33,8 +33,9 @@ export class PracticeService {
   }
 
   async start(userId: string, now = new Date()): Promise<{ attemptId: string | null; questions: PracticeQuestion[] }> {
-    const open = await this.prisma.testAttempt.findFirst({ where: { userId, isPractice: true, finishedAt: null }, include: { practiceQuestions: { orderBy: { order: 'asc' }, include: { question: { select: questionSelect } } } } });
-    if (open) return { attemptId: open.id, questions: open.practiceQuestions.map(entry => toPublic(entry.question)) };
+    const open = await this.prisma.testAttempt.findFirst({ where: { userId, isPractice: true, finishedAt: null }, orderBy: { startedAt: 'desc' }, include: { practiceQuestions: { orderBy: { order: 'asc' }, include: { question: { select: questionSelect } } } } });
+    if (open?.practiceQuestions.length) return { attemptId: open.id, questions: open.practiceQuestions.map(entry => toPublic(entry.question)) };
+    if (open) await this.prisma.testAttempt.delete({ where: { id: open.id } });
     const user = await this.prisma.user.findUniqueOrThrow({ where: { id: userId }, select: { currentDifficulty: true } });
     const { due, fresh, filler } = await this.loadPools(userId, now, user.currentDifficulty);
     const picked = shuffle(pickQuestions({ due, fresh, filler }));
@@ -50,8 +51,9 @@ export class PracticeService {
     if (attempt.finishedAt) throw new ConflictException('Bu sessiya allaqachon yakunlangan');
     const evaluation = evaluateAnswers(attempt.practiceQuestions.map(entry => entry.question), dto.answers);
     const reviews = await this.prisma.$transaction(async tx => {
+      const closed = await tx.testAttempt.updateMany({ where: { id: attemptId, finishedAt: null }, data: { correctAnswers: evaluation.correctCount, wrongAnswers: evaluation.rows.length - evaluation.correctCount, score: evaluation.score, percentage: evaluation.percentage, recommendedDifficulty: attempt.difficulty, finishedAt: now } });      if (!closed.count) throw new ConflictException('Bu sessiya allaqachon yakunlangan');      await tx.attemptAnswer.createMany({ data: evaluation.rows.map(row => ({ attemptId, ...row })) });
+      if (!closed.count) throw new ConflictException('Bu sessiya allaqachon yakunlangan');
       await tx.attemptAnswer.createMany({ data: evaluation.rows.map(row => ({ attemptId, ...row })) });
-      await tx.testAttempt.update({ where: { id: attemptId }, data: { correctAnswers: evaluation.correctCount, wrongAnswers: evaluation.rows.length - evaluation.correctCount, score: evaluation.score, percentage: evaluation.percentage, recommendedDifficulty: attempt.difficulty, finishedAt: now } });
       return this.stats.record(tx, userId, evaluation.rows.map(({ questionId, isCorrect }) => ({ questionId, isCorrect })), now);
     });
     return {

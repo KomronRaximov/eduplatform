@@ -18,7 +18,7 @@ export default function PracticePage() {
   useEffect(() => { if (started.current) return; started.current = true; api<Start>('/practice/start', { method: 'POST' }).then(setStart).catch(caught => setError(caught.message)); }, []);
   const submit = useMutation({ mutationFn: () => api<Result>(`/practice/${start!.attemptId}/submit`, { method: 'POST', body: JSON.stringify({ answers: Object.entries(answers).map(([questionId, selectedOptionId]) => ({ questionId, selectedOptionId })) }) }), onSuccess: setResult, onError: caught => setError((caught as Error).message) });
   if (error && !start) return <ErrorBox message={error} />; if (!start) return <Loading />;
-  if (!start.attemptId) return <EmptyState title="Hozircha mashq uchun savol yo‘q" description="Barcha savollar o‘zlashtirilgan yoki takrorlash vaqti hali kelmagan. Keyinroq qaytib keling yoki test yeching." icon="book" action={{ href: '/tests', label: 'Testlarni ko‘rish' }} />;
+  if (!start.attemptId || !start.questions.length) return <EmptyState title="Hozircha mashq uchun savol yo‘q" description="Barcha savollar o‘zlashtirilgan yoki takrorlash vaqti hali kelmagan. Keyinroq qaytib keling yoki test yeching." icon="book" action={{ href: '/tests', label: 'Testlarni ko‘rish' }} />;
 
   if (result) {
     const byId = new Map(start.questions.map(question => [question.id, question]));

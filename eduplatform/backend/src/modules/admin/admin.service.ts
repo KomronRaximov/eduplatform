@@ -202,7 +202,7 @@ export class AdminService {
 
   async deleteTest(id: string) {
     await this.test(id);
-    await this.prisma.test.delete({ where: { id } });
+    await this.deleteGuarded(() => this.prisma.test.delete({ where: { id } }), 'Bu testda urinishlar mavjud, uni o‘chirib bo‘lmaydi');
     return { success: true };
   }
 
@@ -256,7 +256,14 @@ export class AdminService {
     const question = await this.prisma.question.findUnique({ where: { id } });
     if (!question) throw new NotFoundException('Savol topilmadi');
 
-    await this.prisma.question.delete({ where: { id } });
+    await this.deleteGuarded(() => this.prisma.question.delete({ where: { id } }), 'Bu savolga javoblar berilgan, uni o‘chirib bo‘lmaydi');
     return { success: true };
+  }
+
+  private async deleteGuarded(action: () => Promise<unknown>, message: string) {
+    try { await action(); } catch (error) {
+      if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2003') throw new ConflictException(message);
+      throw error;
+    }
   }
 }

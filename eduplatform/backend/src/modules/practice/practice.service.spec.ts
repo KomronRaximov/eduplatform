@@ -8,6 +8,7 @@ const stat = (box: number, nextReviewAt: Date) => [{ box, nextReviewAt }];
 
 function setup(opts: { questions?: any[]; open?: any; attempt?: any; progress?: any[] } = {}) {
   const tx: any = { attemptAnswer: { createMany: jest.fn() }, testAttempt: { update: jest.fn() }, userTopicProgress: { upsert: jest.fn() }, user: { update: jest.fn() } };
+  tx.testAttempt.updateMany = jest.fn().mockResolvedValue({ count: 1 });
   const prisma: any = {
     testAttempt: { findFirst: jest.fn().mockResolvedValue(opts.open ?? null), findUnique: jest.fn().mockResolvedValue(opts.attempt ?? null), create: jest.fn().mockResolvedValue({ id: 'new-attempt' }) },
     user: { findUniqueOrThrow: jest.fn().mockResolvedValue({ currentDifficulty: 'EASY' }), update: tx.user.update },
@@ -89,5 +90,27 @@ describe('PracticeService.overview', () => {
     const result = await service.overview('u1', now);
     expect(result).toMatchObject({ dueCount: 1, newCount: 2 });
     expect(result.weakTopics.map(t => t.name)).toEqual(['T1', 'T2', 'T3']);
+  });
+});
+
+describe('PracticeService concurrency and stale sessions', () => {
+  it('replaces an open session whose questions were all deleted', async () => {
+    const open = { id: 'stale', practiceQuestions: [] };
+    const { service, prisma } = setup({ open, questions: [makeQuestion('q1')] });
+    prisma.testAttempt.delete = jest.fn();
+    const result = await service.start('u1', now);
+    expect(prisma.testAttempt.delete).toHaveBeenCalledWith({ where: { id: 'stale' } });
+    expect(result).toMatchObject({ attemptId: 'new-attempt' });
+  });
+  it('looks for the newest open session', async () => {
+    const { service, prisma } = setup({});
+    await service.start('u1', now);
+    expect(prisma.testAttempt.findFirst.mock.calls[0][0].orderBy).toEqual({ startedAt: 'desc' });
+  });
+  it('returns 409 when a concurrent submit already finished the attempt', async () => {
+    const attempt = { id: 'a1', userId: 'u1', isPractice: true, finishedAt: null, difficulty: 'EASY', practiceQuestions: [{ question: makeQuestion('q1') }] };
+    const { service, tx } = setup({ attempt });
+    tx.testAttempt.updateMany = jest.fn().mockResolvedValue({ count: 0 });
+    await expect(service.submit('u1', 'a1', { answers: [] }, now)).rejects.toThrow(ConflictException);
   });
 });
