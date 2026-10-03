@@ -1,6 +1,7 @@
 import { BadRequestException, ConflictException, Injectable, NotFoundException } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
+import { VideoFilesService } from '../videos/video-files.service';
 import {
   CreateQuestionDto,
   CreateTestDto,
@@ -15,7 +16,7 @@ import {
 
 @Injectable()
 export class AdminService {
-  constructor(private prisma: PrismaService) {}
+  constructor(private prisma: PrismaService, private videoFiles: VideoFilesService) {}
 
   private async paginated<T>(
     page: number,
@@ -148,7 +149,9 @@ export class AdminService {
 
   async deleteTopic(id: string) {
     await this.topic(id);
-    await this.prisma.topic.delete({ where: { id } });
+    const uploads = await this.prisma.video.findMany({ where: { topicId: id, fileName: { not: null } }, select: { fileName: true } });
+    await this.deleteGuarded(() => this.prisma.topic.delete({ where: { id } }), 'Bu mavzudagi testlarda urinishlar mavjud, mavzuni o‘chirib bo‘lmaydi');
+    await Promise.all(uploads.map(video => this.videoFiles.remove(video.fileName)));
     return { success: true };
   }
 
