@@ -18,3 +18,11 @@ Launcher avtomatik ravishda:
 Mavjud SQLite ma’lumotlari keyingi ishga tushirishlarda o‘chirilmaydi.
 
 Demo akkauntlar: `admin@example.com` / `Admin123!`, `student@example.com` / `Student123!`.
+
+## Shaxsiy mashq (oraliqli takrorlash)
+
+Dashboard’dagi "Shaxsiy mashq" kartochkasi orqali o‘quvchi 12 ta savoldan iborat moslashgan sessiyani boshlaydi: hali ko‘rilmagan savollar (zaif mavzular ustuvor) va takrorlash vaqti kelgan savollar (ko‘pi bilan 6 ta) aralashtiriladi.
+
+Takrorlash Leitner qutilari (0–4) bilan ishlaydi: to‘g‘ri javobda quti bittaga oshadi, xatoda 0 ga qaytadi. Qutilar bo‘yicha takrorlash oralig‘i: 1, 2, 4, 8 va 16 kun. Oddiy testlar ham shu statistikani yangilaydi.
+
+Endpoint’lar (JWT talab qilinadi): `POST /api/practice/start`, `POST /api/practice/:attemptId/submit`, `GET /api/practice/overview`.
