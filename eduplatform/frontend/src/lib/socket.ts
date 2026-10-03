@@ -5,10 +5,10 @@ let socket: Socket | null = null;
 let socketToken: string | null = null;
 
 // Reads localStorage directly (not lib/auth.ts): logout()/saveSession() there call closeSocket(), so importing it would be a cycle.
-export function sessionUser(): { id?: string; role?: string } | null {
+export function storedUser(): { id?: string; role?: string } | null {
   try { const raw = localStorage.getItem('user'); return raw ? JSON.parse(raw) : null; } catch { return null; }
 }
-export const sessionRole = (): string | null => sessionUser()?.role ?? null;
+export const sessionRole = (): string | null => storedUser()?.role ?? null;
 
 export function closeSocket(): void {
   socket?.disconnect();
