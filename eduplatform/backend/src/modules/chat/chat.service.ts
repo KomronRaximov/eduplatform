@@ -1,8 +1,8 @@
-import { BadRequestException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ForbiddenException, HttpException, HttpStatus, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { UserRole } from '../../common/types/database.enums';
 import { PrismaService } from '../../prisma/prisma.service';
 import { ChatGateway } from './chat.gateway';
-import { ChatContact, ChatConversationDto, DEFAULT_PAGE, MAX_PAGE } from './chat.types';
+import { ChatContact, ChatConversationDto, ChatMessageDto, DEFAULT_PAGE, MAX_BODY, MAX_PAGE, RATE_LIMIT_PER_MINUTE } from './chat.types';
 
 type ChatRole = 'STUDENT' | 'TEACHER';
 type Actor = { id: string; role: ChatRole; firstName: string; lastName: string };
@@ -20,6 +20,8 @@ const toContact = (user: ContactRow, viewerRole: ChatRole): ChatContact => ({
 
 @Injectable()
 export class ChatService {
+  private readonly logger = new Logger(ChatService.name);
+
   constructor(private prisma: PrismaService, private gateway: ChatGateway) {}
 
   private async actor(userId: string): Promise<Actor> {
@@ -96,6 +98,97 @@ export class ChatService {
       }
     }
     return this.toConversationDto(conversation, actor);
+  }
+
+  private toMessageDto(message: { id: string; conversationId: string; senderId: string; body: string; createdAt: Date; readAt: Date | null }): ChatMessageDto {
+    return {
+      id: message.id,
+      conversationId: message.conversationId,
+      senderId: message.senderId,
+      body: message.body,
+      createdAt: message.createdAt.toISOString(),
+      readAt: message.readAt ? message.readAt.toISOString() : null,
+    };
+  }
+
+  private async emitSafely(emit: () => Promise<void>) {
+    try {
+      await emit();
+    } catch (error: any) {
+      this.logger.error(`Chat hodisasini yuborib bo‘lmadi: ${error?.message ?? error}`);
+    }
+  }
+
+  async messages(userId: string, conversationId: string, before?: string, limit?: number): Promise<{ items: ChatMessageDto[]; hasMore: boolean }> {
+    await this.actor(userId);
+    await this.assertParticipant(userId, conversationId);
+    const parsed = Math.floor(Number(limit));
+    const take = Number.isFinite(parsed) && parsed >= 1 ? Math.min(parsed, MAX_PAGE) : DEFAULT_PAGE;
+
+    let cursorFilter = {};
+    if (before) {
+      const cursor = await this.prisma.message.findFirst({ where: { id: before, conversationId }, select: { id: true, createdAt: true } });
+      if (!cursor) throw new BadRequestException('Noto‘g‘ri kursor');
+      cursorFilter = { OR: [{ createdAt: { lt: cursor.createdAt } }, { createdAt: cursor.createdAt, id: { lt: cursor.id } }] };
+    }
+    const rows = await this.prisma.message.findMany({
+      where: { conversationId, ...cursorFilter },
+      orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+      take: take + 1,
+    });
+    const hasMore = rows.length > take;
+    return { items: rows.slice(0, take).reverse().map(row => this.toMessageDto(row)), hasMore };
+  }
+
+  async send(userId: string, conversationId: string, body: string): Promise<ChatMessageDto> {
+    await this.actor(userId);
+    const conversation = await this.assertParticipant(userId, conversationId);
+    const text = typeof body === 'string' ? body.trim() : '';
+    if (!text) throw new BadRequestException('Xabar bo‘sh bo‘lmasligi kerak');
+    if (text.length > MAX_BODY) throw new BadRequestException(`Xabar ${MAX_BODY} belgidan oshmasligi kerak`);
+
+    const recent = await this.prisma.message.count({ where: { senderId: userId, createdAt: { gte: new Date(Date.now() - 60_000) } } });
+    if (recent >= RATE_LIMIT_PER_MINUTE) throw new HttpException('Juda ko‘p xabar yuborildi, biroz kuting', HttpStatus.TOO_MANY_REQUESTS);
+
+    const created = await this.prisma.$transaction(async tx => {
+      const message = await tx.message.create({ data: { conversationId, senderId: userId, body: text } });
+      await tx.conversation.update({ where: { id: conversationId }, data: { lastMessageAt: message.createdAt } });
+      return message;
+    });
+    const dto = this.toMessageDto(created);
+    const receiverId = conversation.studentId === userId ? conversation.teacherId : conversation.studentId;
+    await this.emitSafely(async () => {
+      this.gateway.emitToUser(userId, 'chat:message', { message: dto });
+      this.gateway.emitToUser(receiverId, 'chat:message', { message: dto });
+      this.gateway.emitToUser(receiverId, 'chat:unread', await this.unreadTotal(receiverId));
+    });
+    return dto;
+  }
+
+  async markRead(userId: string, conversationId: string): Promise<{ updated: number }> {
+    await this.actor(userId);
+    const conversation = await this.assertParticipant(userId, conversationId);
+    const readAt = new Date();
+    const { count } = await this.prisma.message.updateMany({
+      where: { conversationId, senderId: { not: userId }, readAt: null },
+      data: { readAt },
+    });
+    if (count > 0) {
+      const otherId = conversation.studentId === userId ? conversation.teacherId : conversation.studentId;
+      await this.emitSafely(async () => {
+        this.gateway.emitToUser(otherId, 'chat:read', { conversationId, readerId: userId, readAt: readAt.toISOString() });
+        this.gateway.emitToUser(userId, 'chat:unread', await this.unreadTotal(userId));
+      });
+    }
+    return { updated: count };
+  }
+
+  async unreadTotal(userId: string): Promise<{ total: number }> {
+    await this.actor(userId);
+    const total = await this.prisma.message.count({
+      where: { senderId: { not: userId }, readAt: null, conversation: { OR: [{ studentId: userId }, { teacherId: userId }] } },
+    });
+    return { total };
   }
 
   private async assertParticipant(userId: string, conversationId: string) {
