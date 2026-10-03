@@ -91,8 +91,9 @@ export class AdminService {
     return user;
   }
 
-  async updateUser(id: string, dto: UpdateUserDto) {
-    await this.user(id);
+  async updateUser(id: string, dto: UpdateUserDto, actingUserId?: string) {
+    const existing: any = await this.user(id);
+    if (actingUserId === id && dto.role !== undefined && dto.role !== existing?.role) throw new BadRequestException("O‘z rolingizni o‘zgartirib bo‘lmaydi");
     return this.prisma.user.update({
       where: { id },
       data: dto,

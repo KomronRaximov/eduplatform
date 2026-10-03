@@ -1,4 +1,4 @@
-import { ConflictException } from '@nestjs/common';
+import { BadRequestException, ConflictException } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { AdminService } from './admin.service';
 
@@ -35,5 +35,29 @@ describe('AdminService.deleteTopic removes uploaded video files', () => {
     const { service, f } = make(jest.fn().mockRejectedValue(fkError()));
     await expect(service.deleteTopic('t1')).rejects.toThrow(ConflictException);
     expect(f.remove).not.toHaveBeenCalled();
+  });
+});
+
+describe('AdminService.updateUser self-protection', () => {
+  const make = () => {
+    const prisma: any = { user: { update: jest.fn().mockResolvedValue({}) } };
+    const service = new AdminService(prisma, files() as any);
+    jest.spyOn(service, 'user').mockResolvedValue({} as any);
+    return { service, prisma };
+  };
+  it('rejects changing own role', async () => {
+    const { service, prisma } = make();
+    await expect(service.updateUser('u1', { role: 'STUDENT' } as any, 'u1')).rejects.toThrow(BadRequestException);
+    expect(prisma.user.update).not.toHaveBeenCalled();
+  });
+  it('allows changing another user role', async () => {
+    const { service, prisma } = make();
+    await service.updateUser('u2', { role: 'TEACHER' } as any, 'u1');
+    expect(prisma.user.update).toHaveBeenCalled();
+  });
+  it('allows editing own currentDifficulty', async () => {
+    const { service, prisma } = make();
+    await service.updateUser('u1', { currentDifficulty: 'HARD' } as any, 'u1');
+    expect(prisma.user.update).toHaveBeenCalled();
   });
 });
