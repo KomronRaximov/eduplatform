@@ -1,6 +1,7 @@
 import { BadRequestException, ConflictException, Injectable, NotFoundException } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
+import { VideoFilesService } from '../videos/video-files.service';
 import {
   CreateQuestionDto,
   CreateTestDto,
@@ -15,7 +16,7 @@ import {
 
 @Injectable()
 export class AdminService {
-  constructor(private prisma: PrismaService) {}
+  constructor(private prisma: PrismaService, private videoFiles: VideoFilesService) {}
 
   private async paginated<T>(
     page: number,
@@ -148,7 +149,9 @@ export class AdminService {
 
   async deleteTopic(id: string) {
     await this.topic(id);
-    await this.prisma.topic.delete({ where: { id } });
+    const uploads = await this.prisma.video.findMany({ where: { topicId: id, fileName: { not: null } }, select: { fileName: true } });
+    await this.deleteGuarded(() => this.prisma.topic.delete({ where: { id } }), 'Bu mavzudagi testlarda urinishlar mavjud, mavzuni o‘chirib bo‘lmaydi');
+    await Promise.all(uploads.map(video => this.videoFiles.remove(video.fileName)));
     return { success: true };
   }
 
@@ -202,7 +205,7 @@ export class AdminService {
 
   async deleteTest(id: string) {
     await this.test(id);
-    await this.prisma.test.delete({ where: { id } });
+    await this.deleteGuarded(() => this.prisma.test.delete({ where: { id } }), 'Bu testda urinishlar mavjud, uni o‘chirib bo‘lmaydi');
     return { success: true };
   }
 
@@ -256,7 +259,14 @@ export class AdminService {
     const question = await this.prisma.question.findUnique({ where: { id } });
     if (!question) throw new NotFoundException('Savol topilmadi');
 
-    await this.prisma.question.delete({ where: { id } });
+    await this.deleteGuarded(() => this.prisma.question.delete({ where: { id } }), 'Bu savolga javoblar berilgan, uni o‘chirib bo‘lmaydi');
     return { success: true };
+  }
+
+  private async deleteGuarded(action: () => Promise<unknown>, message: string) {
+    try { await action(); } catch (error) {
+      if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2003') throw new ConflictException(message);
+      throw error;
+    }
   }
 }
