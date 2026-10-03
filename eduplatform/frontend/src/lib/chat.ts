@@ -2,7 +2,7 @@
 import { useEffect, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from './api';
-import { getSocket } from './socket';
+import { getSocket, sessionRole, sessionUser } from './socket';
 import { ChatMessage } from '../types';
 
 export type MessagesCache = { items: ChatMessage[]; hasMore: boolean };
@@ -23,15 +23,17 @@ export function markMessagesRead(cache: MessagesCache | undefined, readerId: str
   return { ...cache, items: cache.items.map((m) => m.senderId !== readerId && m.readAt === null ? { ...m, readAt } : m) };
 }
 
-function sessionRole(): string | null {
-  try { const raw = localStorage.getItem('user'); return raw ? JSON.parse(raw)?.role ?? null : null; } catch { return null; }
-}
+let lastChatUserId: string | null = null;
 
 export function useChatRealtime(): { connected: boolean } {
   const qc = useQueryClient();
   const [connected, setConnected] = useState(false);
 
   useEffect(() => {
+    // Drop another user's cached chat data when the session user changes.
+    const currentId = sessionUser()?.id ?? null;
+    if (lastChatUserId !== null && lastChatUserId !== currentId) qc.removeQueries({ queryKey: ['chat'] });
+    lastChatUserId = currentId;
     const socket = getSocket();
     if (!socket) return;
     const onConnect = () => { setConnected(true); qc.invalidateQueries({ queryKey: ['chat'] }); };
