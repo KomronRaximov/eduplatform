@@ -5,6 +5,14 @@ const u = (id: string, role: string, over: any = {}) => ({ id, role, firstName: 
 const conv = (over: any = {}) => ({ id: 'c1', studentId: 's1', teacherId: 't1', student: u('s1', 'STUDENT'), teacher: u('t1', 'TEACHER'), messages: [], _count: { messages: 0 }, lastMessageAt: new Date('2026-10-01T00:00:00Z'), ...over });
 
 function setup(users: Record<string, any> = {}, over: any = {}) {
+  // distinct client for interactive transactions, so tests fail if code inside a transaction uses this.prisma
+  const tx: any = {
+    message: {
+      count: jest.fn().mockResolvedValue(0),
+      create: jest.fn(async ({ data }: any) => ({ id: 'm1', createdAt: new Date('2026-10-03T10:00:00Z'), readAt: null, ...data })),
+    },
+    conversation: { update: jest.fn(async ({ data }: any) => conv(data)) },
+  };
   const prisma: any = {
     user: {
       findUnique: jest.fn(async ({ where }: any) => users[where.id] ?? null),
@@ -14,20 +22,18 @@ function setup(users: Record<string, any> = {}, over: any = {}) {
       findUnique: jest.fn().mockResolvedValue(null),
       findMany: jest.fn().mockResolvedValue([]),
       create: jest.fn(async ({ data }: any) => conv({ id: 'new', ...data })),
-      update: jest.fn(async ({ data }: any) => conv(data)),
       ...over,
     },
     message: {
       findFirst: jest.fn().mockResolvedValue(null),
       findMany: jest.fn().mockResolvedValue([]),
       count: jest.fn().mockResolvedValue(0),
-      create: jest.fn(async ({ data }: any) => ({ id: 'm1', createdAt: new Date('2026-10-03T10:00:00Z'), readAt: null, ...data })),
       updateMany: jest.fn().mockResolvedValue({ count: 0 }),
     },
-    $transaction: jest.fn(async (fn: any) => fn(prisma)),
+    $transaction: jest.fn(async (fn: any) => fn(tx)),
   };
   const gateway = { emitToUser: jest.fn() };
-  return { service: new ChatService(prisma, gateway as any), prisma, gateway };
+  return { service: new ChatService(prisma, gateway as any), prisma, tx, gateway };
 }
 
 describe('ChatService actor', () => {
@@ -51,6 +57,7 @@ describe('ChatService.contacts', () => {
     expect(prisma.user.findMany.mock.calls[0][0].where).toMatchObject({ role: 'TEACHER' });
     expect(result).toEqual([{ id: 't1', firstName: 'Ft1', lastName: 'Lt1', role: 'TEACHER' }]);
     expect(result[0]).not.toHaveProperty('email');
+    expect(prisma.user.findMany.mock.calls[0][0].select).toEqual({ id: true, role: true, firstName: true, lastName: true });
   });
   it('gives a teacher only students, with email', async () => {
     const { service, prisma } = setup({ t1: u('t1', 'TEACHER') });
@@ -58,6 +65,7 @@ describe('ChatService.contacts', () => {
     const result = await service.contacts('t1');
     expect(prisma.user.findMany.mock.calls[0][0].where).toMatchObject({ role: 'STUDENT' });
     expect(result[0]).toMatchObject({ id: 's1', role: 'STUDENT', email: 's1@x.uz' });
+    expect(prisma.user.findMany.mock.calls[0][0].select.email).toBe(true);
   });
   it('filters by name and email with contains', async () => {
     const { service, prisma } = setup({ s1: u('s1', 'STUDENT') });
@@ -94,6 +102,12 @@ describe('ChatService.openConversation', () => {
     expect(dto).toMatchObject({ id: 'c1', lastMessage: null, unreadCount: 0 });
     expect(dto.other).toMatchObject({ id: 't1', role: 'TEACHER' });
     expect(dto.other).not.toHaveProperty('email');
+    expect(prisma.conversation.findUnique.mock.calls[0][0].include.teacher.select).not.toHaveProperty('email');
+  });
+  it('selects the student email when a teacher opens a conversation', async () => {
+    const { service, prisma } = setup(users, { findUnique: jest.fn().mockResolvedValue(conv()) });
+    await service.openConversation('t1', 's1');
+    expect(prisma.conversation.findUnique.mock.calls[0][0].include.student.select.email).toBe(true);
   });
   it('rejects invalid pairs', async () => {
     const { service } = setup(users);
@@ -131,7 +145,7 @@ describe('ChatService.conversations', () => {
     const result = await service.conversations('s1');
     const args = prisma.conversation.findMany.mock.calls[0][0];
     expect(args.orderBy).toEqual({ lastMessageAt: 'desc' });
-    expect(args.where).toEqual({ OR: [{ studentId: 's1' }, { teacherId: 's1' }] });
+    expect(args.where).toEqual({ OR: [{ studentId: 's1' }, { teacherId: 's1' }], messages: { some: {} } });
     expect(args.include._count.select.messages.where).toEqual({ senderId: { not: 's1' }, readAt: null });
     expect(result[0]).toEqual({
       id: 'c1', other: { id: 't1', firstName: 'Ft1', lastName: 'Lt1', role: 'TEACHER' },
@@ -139,6 +153,17 @@ describe('ChatService.conversations', () => {
     });
     expect(result[1].lastMessage).toBeNull();
     expect(result[1].unreadCount).toBe(0);
+  });
+  it('does not select email on either side for a student viewer, but does for a teacher viewer', async () => {
+    const student = setup({ s1: u('s1', 'STUDENT') });
+    await student.service.conversations('s1');
+    const inc = student.prisma.conversation.findMany.mock.calls[0][0].include;
+    expect(inc.student.select).not.toHaveProperty('email');
+    expect(inc.teacher.select).not.toHaveProperty('email');
+    const teacher = setup({ t1: u('t1', 'TEACHER') });
+    await teacher.service.conversations('t1');
+    const tinc = teacher.prisma.conversation.findMany.mock.calls[0][0].include;
+    expect(tinc.student.select.email).toBe(true);
   });
   it('shows a teacher the student email', async () => {
     const { service, prisma } = setup({ t1: u('t1', 'TEACHER') });
@@ -175,9 +200,9 @@ describe('ChatService.send', () => {
       ['t1', { s1: u('s1', 'ADMIN'), t1: u('t1', 'TEACHER') }],
     ];
     for (const [sender, map] of cases) {
-      const { service, prisma, gateway } = setup(map, { findUnique: jest.fn().mockResolvedValue(conv()) });
+      const { service, prisma, tx, gateway } = setup(map, { findUnique: jest.fn().mockResolvedValue(conv()) });
       await expect(service.send(sender, 'c1', 'hi')).rejects.toThrow(new ForbiddenException('Chat faqat talaba va o‘qituvchilar uchun'));
-      expect(prisma.message.create).not.toHaveBeenCalled();
+      expect(tx.message.create).not.toHaveBeenCalled();
       expect(prisma.$transaction).not.toHaveBeenCalled();
       expect(gateway.emitToUser).not.toHaveBeenCalled();
     }
@@ -189,15 +214,15 @@ describe('ChatService.send', () => {
     expect(dto.senderId).toBe('t1');
   });
   it('trims the body and stores it', async () => {
-    const { service, prisma } = make();
+    const { service, tx } = make();
     const dto = await service.send('s1', 'c1', '  salom  ');
-    expect(prisma.message.create.mock.calls[0][0].data).toEqual({ conversationId: 'c1', senderId: 's1', body: 'salom' });
+    expect(tx.message.create.mock.calls[0][0].data).toEqual({ conversationId: 'c1', senderId: 's1', body: 'salom' });
     expect(dto).toEqual({ id: 'm1', conversationId: 'c1', senderId: 's1', body: 'salom', createdAt: new Date(T).toISOString(), readAt: null });
   });
   it('rejects empty, whitespace-only and 2001 char bodies', async () => {
-    const { service, prisma } = make();
+    const { service, tx } = make();
     for (const body of ['', '   \n ', 'a'.repeat(2001)]) await expect(service.send('s1', 'c1', body)).rejects.toBeInstanceOf(BadRequestException);
-    expect(prisma.message.create).not.toHaveBeenCalled();
+    expect(tx.message.create).not.toHaveBeenCalled();
   });
   it('accepts exactly 2000 chars', async () => {
     const { service } = make();
@@ -208,34 +233,37 @@ describe('ChatService.send', () => {
     expect((await service.send('s1', 'c1', '<script>alert(1)</script>')).body).toBe('<script>alert(1)</script>');
   });
   it('updates lastMessageAt to the message createdAt in one transaction', async () => {
-    const { service, prisma } = make();
+    const { service, prisma, tx } = make();
     await service.send('s1', 'c1', 'hi');
     expect(prisma.$transaction).toHaveBeenCalledTimes(1);
-    expect(prisma.conversation.update).toHaveBeenCalledWith({ where: { id: 'c1' }, data: { lastMessageAt: new Date(T) } });
+    expect(tx.conversation.update).toHaveBeenCalledWith({ where: { id: 'c1' }, data: { lastMessageAt: new Date(T) } });
   });
   it('returns 429 when 30 messages were sent in the last minute', async () => {
-    const { service, prisma } = make();
-    prisma.message.count.mockResolvedValue(30);
+    const { service, prisma, tx } = make();
+    tx.message.count.mockResolvedValue(30);
     const err: any = await service.send('s1', 'c1', 'hi').catch(e => e);
     expect(err).toBeInstanceOf(HttpException);
     expect(err.getStatus()).toBe(429);
-    const where = prisma.message.count.mock.calls[0][0].where;
+    expect(prisma.message.count).not.toHaveBeenCalled();
+    const where = tx.message.count.mock.calls[0][0].where;
     expect(where.senderId).toBe('s1');
     const age = Date.now() - where.createdAt.gte.getTime();
     expect(age).toBeGreaterThanOrEqual(59000);
     expect(age).toBeLessThan(62000);
-    expect(prisma.message.create).not.toHaveBeenCalled();
+    expect(tx.message.create).not.toHaveBeenCalled();
+    expect(tx.conversation.update).not.toHaveBeenCalled();
   });
   it('allows the 30th message (29 already sent)', async () => {
-    const { service, prisma } = make();
-    prisma.message.count.mockResolvedValue(29);
+    const { service, tx } = make();
+    tx.message.count.mockResolvedValue(29);
     await expect(service.send('s1', 'c1', 'hi')).resolves.toBeDefined();
+    expect(tx.message.create).toHaveBeenCalledTimes(1);
   });
   it('throws 404 for a non-participant and writes nothing', async () => {
-    const { service, prisma } = setup({ ...users, x1: u('x1', 'STUDENT') }, { findUnique: jest.fn().mockResolvedValue(conv()) });
+    const { service, tx } = setup({ ...users, x1: u('x1', 'STUDENT') }, { findUnique: jest.fn().mockResolvedValue(conv()) });
     await expect(service.send('x1', 'c1', 'hi')).rejects.toBeInstanceOf(NotFoundException);
-    expect(prisma.message.create).not.toHaveBeenCalled();
-    expect(prisma.conversation.update).not.toHaveBeenCalled();
+    expect(tx.message.create).not.toHaveBeenCalled();
+    expect(tx.conversation.update).not.toHaveBeenCalled();
   });
   it('emits message to sender, message to receiver, then unread to receiver', async () => {
     const { service, prisma, gateway } = make();

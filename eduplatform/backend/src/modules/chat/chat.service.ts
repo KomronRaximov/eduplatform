@@ -6,16 +6,17 @@ import { ChatContact, ChatConversationDto, ChatMessageDto, DEFAULT_PAGE, MAX_BOD
 
 type ChatRole = 'STUDENT' | 'TEACHER';
 type Actor = { id: string; role: ChatRole; firstName: string; lastName: string };
-type ContactRow = { id: string; role: string; firstName: string; lastName: string; email: string };
+type ContactRow = { id: string; role: string; firstName: string; lastName: string; email?: string };
 
-const userSelect = { id: true, role: true, firstName: true, lastName: true, email: true };
+// Email is only ever shown to teachers, so students never fetch it.
+const userSelect = (viewerRole: ChatRole) => ({ id: true, role: true, firstName: true, lastName: true, ...(viewerRole === UserRole.TEACHER ? { email: true } : {}) });
 
 const toContact = (user: ContactRow, viewerRole: ChatRole): ChatContact => ({
   id: user.id,
   firstName: user.firstName,
   lastName: user.lastName,
   role: user.role as ChatRole,
-  ...(viewerRole === UserRole.TEACHER ? { email: user.email } : {}),
+  ...(viewerRole === UserRole.TEACHER && user.email !== undefined ? { email: user.email } : {}),
 });
 
 @Injectable()
@@ -30,10 +31,10 @@ export class ChatService {
     return { id: user.id, role: user.role as ChatRole, firstName: user.firstName, lastName: user.lastName };
   }
 
-  private conversationInclude(userId: string) {
+  private conversationInclude(userId: string, viewerRole: ChatRole) {
     return {
-      student: { select: userSelect },
-      teacher: { select: userSelect },
+      student: { select: userSelect(viewerRole) },
+      teacher: { select: userSelect(viewerRole) },
       messages: { orderBy: { createdAt: 'desc' as const }, take: 1, select: { body: true, senderId: true, createdAt: true } },
       _count: { select: { messages: { where: { senderId: { not: userId }, readAt: null } } } },
     };
@@ -60,7 +61,7 @@ export class ChatService {
         role: targetRole,
         ...(term ? { OR: [{ firstName: { contains: term } }, { lastName: { contains: term } }, { email: { contains: term } }] } : {}),
       },
-      select: userSelect,
+      select: userSelect(actor.role),
       orderBy: [{ firstName: 'asc' }, { lastName: 'asc' }],
       take,
     });
@@ -70,9 +71,9 @@ export class ChatService {
   async conversations(userId: string): Promise<ChatConversationDto[]> {
     const actor = await this.actor(userId);
     const rows = await this.prisma.conversation.findMany({
-      where: { OR: [{ studentId: userId }, { teacherId: userId }] },
+      where: { OR: [{ studentId: userId }, { teacherId: userId }], messages: { some: {} } },
       orderBy: { lastMessageAt: 'desc' },
-      include: this.conversationInclude(userId),
+      include: this.conversationInclude(userId, actor.role),
     });
     return rows.map(row => this.toConversationDto(row, actor));
   }
@@ -86,7 +87,7 @@ export class ChatService {
     if (other.role !== expected) throw new BadRequestException('Suhbat faqat talaba va o‘qituvchi o‘rtasida bo‘ladi');
 
     const where = { studentId_teacherId: actor.role === UserRole.STUDENT ? { studentId: userId, teacherId: otherId } : { studentId: otherId, teacherId: userId } };
-    const include = this.conversationInclude(userId);
+    const include = this.conversationInclude(userId, actor.role);
     let conversation = await this.prisma.conversation.findUnique({ where, include });
     if (!conversation) {
       try {
@@ -152,10 +153,9 @@ export class ChatService {
     if (!text) throw new BadRequestException('Xabar bo‘sh bo‘lmasligi kerak');
     if (text.length > MAX_BODY) throw new BadRequestException(`Xabar ${MAX_BODY} belgidan oshmasligi kerak`);
 
-    const recent = await this.prisma.message.count({ where: { senderId: userId, createdAt: { gte: new Date(Date.now() - 60_000) } } });
-    if (recent >= RATE_LIMIT_PER_MINUTE) throw new HttpException('Juda ko‘p xabar yuborildi, biroz kuting', HttpStatus.TOO_MANY_REQUESTS);
-
     const created = await this.prisma.$transaction(async tx => {
+      const recent = await tx.message.count({ where: { senderId: userId, createdAt: { gte: new Date(Date.now() - 60_000) } } });
+      if (recent >= RATE_LIMIT_PER_MINUTE) throw new HttpException('Juda ko‘p xabar yuborildi, biroz kuting', HttpStatus.TOO_MANY_REQUESTS);
       const message = await tx.message.create({ data: { conversationId, senderId: userId, body: text } });
       await tx.conversation.update({ where: { id: conversationId }, data: { lastMessageAt: message.createdAt } });
       return message;
