@@ -94,3 +94,17 @@ describe('VideosService.listActive', () => {
     expect(prisma.video.findMany.mock.calls[1][0].where).toEqual({ isActive: true, topic: { isActive: true }, topicId: 't1' });
   });
 });
+
+describe('VideosService best-effort file cleanup', () => {
+  it('keeps the new file and succeeds when deleting the old file fails', async () => {
+    const { service, files } = setup(row({ type: 'UPLOAD', youtubeId: null, fileName: 'old.mp4' }));
+    files.remove.mockRejectedValue(new Error('EPERM'));
+    await expect(service.update('v1', {} as any, file)).resolves.toMatchObject({ fileUrl: '/api/uploads/videos/new.mp4' });
+    expect(files.remove).not.toHaveBeenCalledWith('new.mp4');
+  });
+  it('still reports success when the file of a deleted video cannot be removed', async () => {
+    const { service, files } = setup(row({ type: 'UPLOAD', youtubeId: null, fileName: 'old.mp4' }));
+    files.remove.mockRejectedValue(new Error('EPERM'));
+    await expect(service.remove('v1')).resolves.toEqual({ success: true });
+  });
+});

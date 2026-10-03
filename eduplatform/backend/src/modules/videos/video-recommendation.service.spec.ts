@@ -113,3 +113,11 @@ describe('VideoRecommendationService.recommend', () => {
     expect(result.items[1].reason).toContain('xato qilgan');
   });
 });
+
+describe('VideoRecommendationService wrong-question detection', () => {
+  it('only treats box 0 (last answer wrong) as a wrong question', async () => {
+    const { service, prisma } = setup({ weak: false, configured: false });
+    await service.recommend('u1', NOW);
+    expect(prisma.userQuestionStat.findMany.mock.calls[0][0].where).toEqual({ userId: 'u1', box: 0 });
+  });
+});

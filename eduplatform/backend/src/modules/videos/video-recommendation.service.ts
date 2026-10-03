@@ -52,7 +52,7 @@ export class VideoRecommendationService {
       this.prisma.user.findUniqueOrThrow({ where: { id: userId }, select: { currentDifficulty: true } }),
       this.prisma.userTopicProgress.findMany({ where: { userId, averagePercentage: { lt: WEAK_BELOW } }, include: { topic: { select: { id: true, name: true } } } }),
       this.prisma.testAttempt.findMany({ where: { userId, isPractice: false, finishedAt: { not: null } }, orderBy: { finishedAt: 'desc' }, select: { testId: true, percentage: true, difficulty: true, test: { select: { topicId: true, topic: { select: { name: true } } } } } }),
-      this.prisma.userQuestionStat.findMany({ where: { userId, box: { lte: 1 } }, orderBy: { wrongCount: 'desc' }, take: 50, include: { question: { select: { text: true, test: { select: { topicId: true, topic: { select: { name: true } } } } } } } }),
+      this.prisma.userQuestionStat.findMany({ where: { userId, box: 0 }, orderBy: { wrongCount: 'desc' }, take: 50, include: { question: { select: { text: true, test: { select: { topicId: true, topic: { select: { name: true } } } } } } } }),
     ]);
     const items: WeakTopic[] = progress.map(p => ({ topicId: p.topicId, name: p.topic.name, weakness: p.averagePercentage, percentage: p.averagePercentage }));
     const preferred = new Set<string>([user.currentDifficulty]);

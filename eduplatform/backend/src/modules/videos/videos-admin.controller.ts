@@ -5,6 +5,7 @@ import { Roles } from '../../common/decorators/roles.decorator';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { RolesGuard } from '../../common/guards/roles.guard';
 import { UserRole } from '../../common/types/database.enums';
+import { CleanupUploadOnErrorInterceptor } from './cleanup-upload.interceptor';
 import { CreateVideoDto, UpdateVideoDto, VideoFilterDto } from './dto/video.dto';
 import { videoMulterOptions } from './video-upload';
 import { VideosService } from './videos.service';
@@ -13,7 +14,7 @@ import { VideosService } from './videos.service';
 export class VideosAdminController {
   constructor(private videos: VideosService) {}
   @Get() list(@Query() q: VideoFilterDto) { return this.videos.listAdmin(q.topicId); }
-  @Post() @ApiConsumes('multipart/form-data') @UseInterceptors(FileInterceptor('file', videoMulterOptions)) create(@Body() dto: CreateVideoDto, @UploadedFile() file?: Express.Multer.File) { return this.videos.create(dto, file); }
-  @Patch(':id') @ApiConsumes('multipart/form-data') @UseInterceptors(FileInterceptor('file', videoMulterOptions)) update(@Param('id') id: string, @Body() dto: UpdateVideoDto, @UploadedFile() file?: Express.Multer.File) { return this.videos.update(id, dto, file); }
+  @Post() @ApiConsumes('multipart/form-data') @UseInterceptors(FileInterceptor('file', videoMulterOptions), CleanupUploadOnErrorInterceptor) create(@Body() dto: CreateVideoDto, @UploadedFile() file?: Express.Multer.File) { return this.videos.create(dto, file); }
+  @Patch(':id') @ApiConsumes('multipart/form-data') @UseInterceptors(FileInterceptor('file', videoMulterOptions), CleanupUploadOnErrorInterceptor) update(@Param('id') id: string, @Body() dto: UpdateVideoDto, @UploadedFile() file?: Express.Multer.File) { return this.videos.update(id, dto, file); }
   @Delete(':id') remove(@Param('id') id: string) { return this.videos.remove(id); }
 }

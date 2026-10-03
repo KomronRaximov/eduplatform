@@ -1,4 +1,4 @@
-import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { VideoType } from '../../common/types/database.enums';
 import { PrismaService } from '../../prisma/prisma.service';
@@ -16,6 +16,8 @@ export const toVideoDto = (video: VideoRow): VideoDto => ({ id: video.id, topicI
 
 @Injectable()
 export class VideosService {
+  private logger = new Logger(VideosService.name);
+
   constructor(private prisma: PrismaService, private files: VideoFilesService) {}
 
   async listAdmin(topicId?: string): Promise<VideoDto[]> {
@@ -43,7 +45,7 @@ export class VideosService {
       const row = await this.prisma.video.create({ data: { topicId: dto.topicId, title: dto.title, description: dto.description ?? null, difficulty: dto.difficulty ?? null, ...data }, include: withTopic });
       return toVideoDto(row);
     } catch (error) {
-      if (file) await this.files.remove(file.filename);
+      if (file) await this.safeRemove(file.filename);
       throw error;
     }
   }
@@ -67,10 +69,10 @@ export class VideosService {
         throw new BadRequestException('Video faylni tanlang');
       }
       const row = await this.prisma.video.update({ where: { id }, data, include: withTopic });
-      if (oldFile) await this.files.remove(oldFile);
+      if (oldFile) await this.safeRemove(oldFile);
       return toVideoDto(row);
     } catch (error) {
-      if (file) await this.files.remove(file.filename);
+      if (file) await this.safeRemove(file.filename);
       throw error;
     }
   }
@@ -79,8 +81,13 @@ export class VideosService {
     const existing = await this.prisma.video.findUnique({ where: { id } });
     if (!existing) throw new NotFoundException('Video topilmadi');
     await this.prisma.video.delete({ where: { id } });
-    await this.files.remove(existing.fileName);
+    await this.safeRemove(existing.fileName);
     return { success: true };
+  }
+
+  // Deleting a file is best-effort: the DB is the source of truth and a failed unlink must not turn a saved change into an error.
+  private async safeRemove(fileName: string | null) {
+    try { await this.files.remove(fileName); } catch (error) { this.logger.warn(`Video faylini o‘chirib bo‘lmadi (${fileName}): ${(error as Error).message}`); }
   }
 
   private async assertTopic(topicId: string) {
