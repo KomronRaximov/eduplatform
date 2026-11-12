@@ -20,3 +20,21 @@ export async function api<T>(path: string, init: RequestInit = {}): Promise<T> {
 
   return response.status === 204 ? (undefined as T) : response.json();
 }
+
+/** Auth bilan faylni yuklab olish (masalan CSV eksport). */
+export async function downloadFile(path: string, fileName: string): Promise<void> {
+  const accessToken = token();
+  const response = await fetch(`${BASE}${path}`, { headers: accessToken ? { Authorization: `Bearer ${accessToken}` } : {} });
+  if (!response.ok) {
+    const body = await response.json().catch(() => null);
+    throw new Error(body?.message ?? 'Faylni yuklab bo‘lmadi');
+  }
+  const url = URL.createObjectURL(await response.blob());
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = fileName;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  URL.revokeObjectURL(url);
+}

@@ -15,6 +15,7 @@ const links: { href: string; label: string; icon: IconName }[] = [
   { href: '/admin/users', label: 'Foydalanuvchilar', icon: 'users' },
   { href: '/admin/topics', label: 'Mavzular', icon: 'topics' },
   { href: '/admin/tests', label: 'Testlar', icon: 'tests' },
+  { href: '/admin/results', label: 'Natijalar', icon: 'trophy' },
   { href: '/admin/videos', label: 'Videolar', icon: 'video' },
   { href: '/admin/chat', label: 'Chat', icon: 'chat' },
 ];

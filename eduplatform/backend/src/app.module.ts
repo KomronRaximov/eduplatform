@@ -13,6 +13,7 @@ import { ProgressModule } from './modules/progress/progress.module';
 import { AdminModule } from './modules/admin/admin.module';
 import { UsersModule } from './modules/users/users.module';
 import { ChatModule } from './modules/chat/chat.module';
+import { ResultsModule } from './modules/results/results.module';
 
-@Module({ imports: [ConfigModule.forRoot({ isGlobal: true }), PrismaModule, AuthModule, UsersModule, TopicsModule, TestsModule, AttemptsModule, AdaptiveModule, PracticeModule, VideosModule, DashboardModule, ProgressModule, AdminModule, ChatModule] })
+@Module({ imports: [ConfigModule.forRoot({ isGlobal: true }), PrismaModule, AuthModule, UsersModule, TopicsModule, TestsModule, AttemptsModule, AdaptiveModule, PracticeModule, VideosModule, DashboardModule, ProgressModule, AdminModule, ResultsModule, ChatModule] })
 export class AppModule {}

@@ -22,6 +22,7 @@ export default function AdminDashboard() {
     { href: '/admin/users', icon: 'users', title: 'Foydalanuvchilar', text: 'Akkauntlar va o‘quv darajalarini ko‘ring.', tone: 'bg-sky-100 text-sky-600' },
     { href: '/admin/topics', icon: 'topics', title: 'Mavzular', text: 'O‘quv yo‘nalishlarini qo‘shing va boshqaring.', tone: 'bg-amber-100 text-amber-600' },
     { href: '/admin/tests', icon: 'tests', title: 'Testlar', text: 'Testlar, savollar va javob variantlarini tahrirlang.', tone: 'bg-violet-100 text-violet-600' },
+    { href: '/admin/results', icon: 'trophy', title: 'Natijalar', text: 'Talabalar qaysi testdan qancha ball olganini ko‘ring.', tone: 'bg-rose-100 text-rose-600' },
     { href: '/admin/chat', icon: 'chat', title: 'Chat', text: 'Talabalar bilan xabar almashing.', tone: 'bg-emerald-100 text-emerald-600' },
   ];
   const cards = allCards.filter(item => item.href === '/admin/users' ? role === 'ADMIN' : item.href === '/admin/chat' ? teacher : true);
