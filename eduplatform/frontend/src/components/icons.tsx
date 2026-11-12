@@ -1,6 +1,6 @@
 import { SVGProps } from 'react';
 
-export type IconName = 'dashboard' | 'tests' | 'history' | 'progress' | 'users' | 'topics' | 'logout' | 'clock' | 'question' | 'sparkles' | 'target' | 'trophy' | 'check' | 'close' | 'plus' | 'arrow' | 'book' | 'shield' | 'menu' | 'video' | 'chat';
+export type IconName = 'dashboard' | 'tests' | 'history' | 'progress' | 'users' | 'topics' | 'logout' | 'clock' | 'question' | 'sparkles' | 'target' | 'trophy' | 'check' | 'close' | 'plus' | 'arrow' | 'book' | 'shield' | 'menu' | 'video' | 'chat' | 'paperclip' | 'file' | 'download';
 
 const paths: Record<IconName, React.ReactNode> = {
   dashboard: <><rect x="3" y="3" width="7" height="7" rx="2"/><rect x="14" y="3" width="7" height="7" rx="2"/><rect x="3" y="14" width="7" height="7" rx="2"/><rect x="14" y="14" width="7" height="7" rx="2"/></>,
@@ -24,6 +24,9 @@ const paths: Record<IconName, React.ReactNode> = {
   menu: <path d="M4 7h16M4 12h16M4 17h16"/>,
   video: <><rect x="3" y="6" width="13" height="12" rx="2"/><path d="m16 10 5-3v10l-5-3"/></>,
   chat: <path d="M21 12a8 8 0 0 1-11.6 7.1L3 21l1.9-5.4A8 8 0 1 1 21 12Z"/>,
+  paperclip: <path d="m21 11-8.6 8.6a5 5 0 0 1-7.1-7.1l8.6-8.6a3.3 3.3 0 0 1 4.7 4.7l-8.6 8.6a1.7 1.7 0 0 1-2.4-2.4L15.5 7"/>,
+  file: <><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8l-5-5Z"/><path d="M14 3v5h5M9 13h6M9 17h4"/></>,
+  download: <><path d="M12 4v11m-5-5 5 5 5-5"/><path d="M5 20h14"/></>,
 };
 
 export function Icon({ name, className = 'h-5 w-5', ...props }: { name: IconName } & SVGProps<SVGSVGElement>) {

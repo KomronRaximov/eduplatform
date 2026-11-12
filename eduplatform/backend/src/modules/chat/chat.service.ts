@@ -1,6 +1,8 @@
 import { BadRequestException, ForbiddenException, HttpException, HttpStatus, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { UserRole } from '../../common/types/database.enums';
 import { PrismaService } from '../../prisma/prisma.service';
+import * as path from 'path';
+import { chatFileMime, chatFilesDir, cleanOriginalName, isInlineMime, removeChatFile } from './chat-files';
 import { ChatGateway } from './chat.gateway';
 import { ChatContact, ChatConversationDto, ChatMessageDto, DEFAULT_PAGE, MAX_BODY, MAX_PAGE, RATE_LIMIT_PER_MINUTE } from './chat.types';
 
@@ -35,7 +37,7 @@ export class ChatService {
     return {
       student: { select: userSelect(viewerRole) },
       teacher: { select: userSelect(viewerRole) },
-      messages: { orderBy: { createdAt: 'desc' as const }, take: 1, select: { body: true, senderId: true, createdAt: true } },
+      messages: { orderBy: { createdAt: 'desc' as const }, take: 1, select: { body: true, attachmentName: true, senderId: true, createdAt: true } },
       _count: { select: { messages: { where: { senderId: { not: userId }, readAt: null } } } },
     };
   }
@@ -46,7 +48,7 @@ export class ChatService {
     return {
       id: conversation.id,
       other: toContact(other, viewer.role),
-      lastMessage: last ? { body: last.body, senderId: last.senderId, createdAt: last.createdAt.toISOString() } : null,
+      lastMessage: last ? { body: last.body, attachmentName: last.attachmentName ?? null, senderId: last.senderId, createdAt: last.createdAt.toISOString() } : null,
       unreadCount: conversation._count.messages,
     };
   }
@@ -101,12 +103,13 @@ export class ChatService {
     return this.toConversationDto(conversation, actor);
   }
 
-  private toMessageDto(message: { id: string; conversationId: string; senderId: string; body: string; createdAt: Date; readAt: Date | null }): ChatMessageDto {
+  private toMessageDto(message: { id: string; conversationId: string; senderId: string; body: string; attachmentName?: string | null; attachmentMime?: string | null; attachmentSize?: number | null; createdAt: Date; readAt: Date | null }): ChatMessageDto {
     return {
       id: message.id,
       conversationId: message.conversationId,
       senderId: message.senderId,
       body: message.body,
+      attachment: message.attachmentName && message.attachmentMime ? { name: message.attachmentName, mimeType: message.attachmentMime, size: message.attachmentSize ?? 0 } : null,
       createdAt: message.createdAt.toISOString(),
       readAt: message.readAt ? message.readAt.toISOString() : null,
     };
@@ -141,7 +144,31 @@ export class ChatService {
     return { items: rows.slice(0, take).reverse().map(row => this.toMessageDto(row)), hasMore };
   }
 
-  async send(userId: string, conversationId: string, body: string): Promise<ChatMessageDto> {
+  /** Fayl bilan xabar. Har qanday xatoda yuklangan fayl diskdan o'chiriladi. */
+  async sendAttachment(userId: string, conversationId: string, file: Express.Multer.File | undefined, body?: string): Promise<ChatMessageDto> {
+    if (!file) throw new BadRequestException('Fayl tanlanmagan');
+    try {
+      const mime = chatFileMime(file.originalname);
+      if (!mime) throw new BadRequestException('Bu turdagi faylni yuborib bo‘lmaydi');
+      const attachment = { attachmentFile: file.filename, attachmentName: cleanOriginalName(file.originalname), attachmentMime: mime, attachmentSize: file.size };
+      return await this.send(userId, conversationId, body ?? '', attachment);
+    } catch (error) {
+      await removeChatFile(file.filename).catch(() => undefined);
+      throw error;
+    }
+  }
+
+  /** Faylni faqat suhbat ishtirokchisiga beradi. */
+  async attachment(userId: string, messageId: string): Promise<{ filePath: string; name: string; mimeType: string; inline: boolean }> {
+    await this.actor(userId);
+    const message = await this.prisma.message.findUnique({ where: { id: messageId }, select: { conversationId: true, attachmentFile: true, attachmentName: true, attachmentMime: true } });
+    if (!message?.attachmentFile || !message.attachmentMime) throw new NotFoundException('Fayl topilmadi');
+    await this.assertParticipant(userId, message.conversationId);
+    if (path.basename(message.attachmentFile) !== message.attachmentFile) throw new NotFoundException('Fayl topilmadi');
+    return { filePath: path.join(chatFilesDir(), message.attachmentFile), name: message.attachmentName ?? 'fayl', mimeType: message.attachmentMime, inline: isInlineMime(message.attachmentMime) };
+  }
+
+  async send(userId: string, conversationId: string, body: string, attachment?: { attachmentFile: string; attachmentName: string; attachmentMime: string; attachmentSize: number }): Promise<ChatMessageDto> {
     await this.actor(userId);
     const conversation = await this.assertParticipant(userId, conversationId);
     const pair = await this.prisma.user.findMany({ where: { id: { in: [conversation.studentId, conversation.teacherId] } }, select: { id: true, role: true } });
@@ -150,13 +177,13 @@ export class ChatService {
       throw new ForbiddenException('Chat faqat talaba va o‘qituvchilar uchun');
     }
     const text = typeof body === 'string' ? body.trim() : '';
-    if (!text) throw new BadRequestException('Xabar bo‘sh bo‘lmasligi kerak');
+    if (!text && !attachment) throw new BadRequestException('Xabar bo‘sh bo‘lmasligi kerak');
     if (text.length > MAX_BODY) throw new BadRequestException(`Xabar ${MAX_BODY} belgidan oshmasligi kerak`);
 
     const created = await this.prisma.$transaction(async tx => {
       const recent = await tx.message.count({ where: { senderId: userId, createdAt: { gte: new Date(Date.now() - 60_000) } } });
       if (recent >= RATE_LIMIT_PER_MINUTE) throw new HttpException('Juda ko‘p xabar yuborildi, biroz kuting', HttpStatus.TOO_MANY_REQUESTS);
-      const message = await tx.message.create({ data: { conversationId, senderId: userId, body: text } });
+      const message = await tx.message.create({ data: { conversationId, senderId: userId, body: text, ...attachment } });
       await tx.conversation.update({ where: { id: conversationId }, data: { lastMessageAt: message.createdAt } });
       return message;
     });

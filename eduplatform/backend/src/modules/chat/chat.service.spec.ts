@@ -149,7 +149,7 @@ describe('ChatService.conversations', () => {
     expect(args.include._count.select.messages.where).toEqual({ senderId: { not: 's1' }, readAt: null });
     expect(result[0]).toEqual({
       id: 'c1', other: { id: 't1', firstName: 'Ft1', lastName: 'Lt1', role: 'TEACHER' },
-      lastMessage: { body: 'salom', senderId: 't1', createdAt: last.toISOString() }, unreadCount: 3,
+      lastMessage: { body: 'salom', attachmentName: null, senderId: 't1', createdAt: last.toISOString() }, unreadCount: 3,
     });
     expect(result[1].lastMessage).toBeNull();
     expect(result[1].unreadCount).toBe(0);
@@ -217,7 +217,7 @@ describe('ChatService.send', () => {
     const { service, tx } = make();
     const dto = await service.send('s1', 'c1', '  salom  ');
     expect(tx.message.create.mock.calls[0][0].data).toEqual({ conversationId: 'c1', senderId: 's1', body: 'salom' });
-    expect(dto).toEqual({ id: 'm1', conversationId: 'c1', senderId: 's1', body: 'salom', createdAt: new Date(T).toISOString(), readAt: null });
+    expect(dto).toEqual({ id: 'm1', conversationId: 'c1', senderId: 's1', body: 'salom', attachment: null, createdAt: new Date(T).toISOString(), readAt: null });
   });
   it('rejects empty, whitespace-only and 2001 char bodies', async () => {
     const { service, tx } = make();

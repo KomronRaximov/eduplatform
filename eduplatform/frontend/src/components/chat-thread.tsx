@@ -5,6 +5,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '../lib/api';
 import { appendMessage, markMessagesRead, MessagesCache } from '../lib/chat';
 import { ChatContact, ChatMessage } from '../types';
+import { AttachmentView, CHAT_FILE_ACCEPT, CHAT_FILE_MAX_BYTES, formatSize, isAllowedChatFile } from './chat-attachment';
 import { Icon } from './icons';
 import { EmptyState, ErrorBox, Loading } from './ui';
 
@@ -17,6 +18,8 @@ export function ChatThread({ conversationId, other, currentUserId, unreadCount, 
   const qc = useQueryClient();
   const key = ['chat', 'messages', conversationId];
   const [draft, setDraft] = useState('');
+  const [file, setFile] = useState<File | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
   const [error, setError] = useState('');
   const [loadingOlder, setLoadingOlder] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -34,11 +37,18 @@ export function ChatThread({ conversationId, other, currentUserId, unreadCount, 
   const lastId = items.length ? items[items.length - 1].id : null;
 
   const send = useMutation({
-    mutationFn: (body: string) => api<ChatMessage>(`/chat/conversations/${conversationId}/messages`, { method: 'POST', body: JSON.stringify({ body }) }),
+    mutationFn: ({ body, file }: { body: string; file: File | null }) => {
+      if (!file) return api<ChatMessage>(`/chat/conversations/${conversationId}/messages`, { method: 'POST', body: JSON.stringify({ body }) });
+      const form = new FormData();
+      form.append('file', file);
+      if (body.trim()) form.append('body', body);
+      return api<ChatMessage>(`/chat/conversations/${conversationId}/attachments`, { method: 'POST', body: form });
+    },
     onSuccess: (message) => {
       qc.setQueryData<MessagesCache | undefined>(key, (old) => appendMessage(old, message));
       qc.invalidateQueries({ queryKey: ['chat', 'conversations'] });
       setDraft('');
+      setFile(null);
       setError('');
     },
     onError: (e: Error) => setError(e.message),
@@ -87,6 +97,12 @@ export function ChatThread({ conversationId, other, currentUserId, unreadCount, 
     if (el) el.scrollTop = el.scrollHeight;
   }, [lastId]);
 
+  // Rasm kech yuklanib balandlik o'zgarsa, foydalanuvchi pastda turgan bo'lsa pastda qoldiramiz.
+  const keepAtBottom = () => {
+    const el = scrollRef.current;
+    if (el && el.scrollHeight - el.scrollTop - el.clientHeight < 400) el.scrollTop = el.scrollHeight;
+  };
+
   async function loadOlder() {
     const first = items[0];
     if (!first || loadingOlder) return;
@@ -111,8 +127,16 @@ export function ChatThread({ conversationId, other, currentUserId, unreadCount, 
     }
   }
 
-  const canSend = draft.trim().length > 0 && draft.length <= MAX_LENGTH && !send.isPending;
-  const submit = () => { if (canSend) send.mutate(draft); };
+  const canSend = (draft.trim().length > 0 || !!file) && draft.length <= MAX_LENGTH && !send.isPending;
+  const submit = () => { if (canSend) send.mutate({ body: draft, file }); };
+  const pickFile = (picked: File | undefined) => {
+    if (fileInputRef.current) fileInputRef.current.value = '';
+    if (!picked) return;
+    if (!isAllowedChatFile(picked.name)) { setError('Bu turdagi faylni yuborib bo‘lmaydi. Rasm, PDF, Word, Excel, PowerPoint, TXT, ZIP, MP3 yoki MP4 yuboring'); return; }
+    if (picked.size > CHAT_FILE_MAX_BYTES) { setError(`Fayl hajmi ${formatSize(CHAT_FILE_MAX_BYTES)} dan oshmasligi kerak`); return; }
+    setError('');
+    setFile(picked);
+  };
 
   return (
     <div className="flex h-full min-h-0 flex-col">
@@ -132,7 +156,8 @@ export function ChatThread({ conversationId, other, currentUserId, unreadCount, 
           return (
             <div key={m.id} className={`flex ${mine ? 'justify-end' : 'justify-start'}`}>
               <div className={`max-w-[80%] rounded-2xl px-3.5 py-2 text-sm ${mine ? 'rounded-br-md bg-violet-600 text-white' : 'rounded-bl-md bg-slate-100 text-slate-800'}`}>
-                <p className="whitespace-pre-wrap break-words">{m.body}</p>
+                {m.attachment && <div className={m.body ? 'mb-1.5' : ''}><AttachmentView messageId={m.id} attachment={m.attachment} mine={mine} onImageLoad={keepAtBottom} /></div>}
+                {m.body && <p className="whitespace-pre-wrap break-words">{m.body}</p>}
                 <span className={`mt-1 flex items-center justify-end gap-1 text-[11px] ${mine ? 'text-violet-200' : 'text-slate-400'}`}>
                   {time(m.createdAt)}
                   {mine && m.readAt && <span className="inline-flex items-center gap-0.5" title="O‘qildi"><Icon name="check" className="h-3 w-3" /><span className="sr-only">O‘qildi</span></span>}
@@ -145,18 +170,24 @@ export function ChatThread({ conversationId, other, currentUserId, unreadCount, 
 
       <div className="border-t border-slate-100 p-3">
         {error && <div className="mb-2"><ErrorBox message={error} /></div>}
+        {file && <div className="mb-2 flex items-center gap-2 rounded-xl border border-violet-200 bg-violet-50 px-3 py-2 text-sm text-violet-800">
+          <Icon name="paperclip" className="h-4 w-4 shrink-0" /><span className="min-w-0 flex-1 truncate font-semibold">{file.name}</span><span className="shrink-0 text-xs text-violet-500">{formatSize(file.size)}</span>
+          <button type="button" onClick={() => setFile(null)} disabled={send.isPending} aria-label="Faylni olib tashlash" className="grid h-6 w-6 shrink-0 place-items-center rounded-md hover:bg-violet-100"><Icon name="close" className="h-3.5 w-3.5" /></button>
+        </div>}
         <div className="flex items-end gap-2">
+          <input ref={fileInputRef} type="file" className="hidden" accept={CHAT_FILE_ACCEPT} onChange={(e) => pickFile(e.target.files?.[0])} />
+          <button type="button" onClick={() => fileInputRef.current?.click()} disabled={send.isPending} aria-label="Fayl biriktirish" title="Fayl biriktirish (20 MB gacha)" className="grid h-11 w-11 shrink-0 place-items-center rounded-xl border border-slate-200 text-slate-500 transition hover:border-violet-300 hover:bg-violet-50 hover:text-violet-600 disabled:opacity-50"><Icon name="paperclip" className="h-5 w-5" /></button>
           <textarea
             className="input min-h-[44px] flex-1 resize-none"
             rows={2}
             value={draft}
             maxLength={MAX_LENGTH}
-            placeholder="Xabar yozing…"
+            placeholder={file ? 'Izoh qo‘shing (ixtiyoriy)…' : 'Xabar yozing…'}
             aria-label="Xabar"
             onChange={(e) => setDraft(e.target.value)}
             onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) { e.preventDefault(); submit(); } }}
           />
-          <button type="button" className="btn-primary" disabled={!canSend} onClick={submit}>Yuborish</button>
+          <button type="button" className="btn-primary" disabled={!canSend} onClick={submit}>{send.isPending ? 'Yuborilmoqda…' : 'Yuborish'}</button>
         </div>
         <p className="mt-1 text-right text-xs text-slate-400">{draft.length}/{MAX_LENGTH}</p>
       </div>

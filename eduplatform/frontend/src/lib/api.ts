@@ -38,3 +38,14 @@ export async function downloadFile(path: string, fileName: string): Promise<void
   link.remove();
   URL.revokeObjectURL(url);
 }
+
+/** Auth bilan faylni Blob sifatida oladi (rasm ko'rish yoki yuklab olish uchun). */
+export async function fetchBlob(path: string): Promise<Blob> {
+  const accessToken = token();
+  const response = await fetch(`${BASE}${path}`, { headers: accessToken ? { Authorization: `Bearer ${accessToken}` } : {} });
+  if (!response.ok) {
+    const body = await response.json().catch(() => null);
+    throw new Error(body?.message ?? 'Faylni ochib bo‘lmadi');
+  }
+  return response.blob();
+}

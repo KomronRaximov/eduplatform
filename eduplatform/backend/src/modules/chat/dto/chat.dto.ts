@@ -3,6 +3,7 @@ import { IsInt, IsOptional, IsString, Max, Min } from 'class-validator';
 
 export class OpenConversationDto { @IsString() userId!: string; }
 export class SendMessageDto { @IsString() body!: string; }
+export class SendAttachmentDto { @IsOptional() @IsString() body?: string; }
 export class ContactsQueryDto {
   @IsOptional() @IsString() q?: string;
   @IsOptional() @Type(() => Number) @IsInt() @Min(1) @Max(100) limit?: number;
